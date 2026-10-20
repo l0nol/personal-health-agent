@@ -3,8 +3,8 @@
 {% block content %}
 <header class="page-head">
   <div>
-    <h1>时钟模式 <span class="badge-demo">Demo</span></h1>
-    <p class="sub">外环导航 · 中心摘要 · 普通入口始终可用</p>
+    <h1>时钟模式</h1>
+    <p class="sub">外环选页面 · 中心看预览 · 点「进入」打开</p>
   </div>
   <form method="post" action="/settings/mode">
     <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -15,30 +15,53 @@
 </header>
 
 <div class="chronos">
-  <div class="dial" role="navigation" aria-label="表盘导航">
-    <div class="dial-face"></div>
+  <section aria-label="表盘导航">
+    <div class="dial" role="group" aria-label="表盘导航：先选一个扇区，点「进入」打开">
+      <div class="dial-face" aria-hidden="true"></div>
 
-    <a class="sector" style="--i:0" href="/sleep"><span>睡眠</span></a>
-    <a class="sector" style="--i:1" href="/trends"><span>趋势</span></a>
-    <a class="sector" style="--i:2" href="/imports"><span>导入</span></a>
-    <a class="sector" style="--i:3" href="/alerts"><span>提醒</span></a>
-    <a class="sector" style="--i:4" href="/reports"><span>报告</span></a>
-    <a class="sector" style="--i:5" href="/settings"><span>设置</span></a>
+      {# 单选扇区：原生 radio + label，零 JS。方向键切换，Tab 到「进入」按回车 #}
+      {% for s in sectors %}
+      <input class="sector-input" type="radio" name="sector" id="sector-{{ s.key }}"
+             value="{{ s.key }}" style="--i:{{ s.idx }}" {% if loop.first %}checked{% endif %}>
+      {% endfor %}
 
-    <div class="dial-core">
-      <p class="core-date">{{ end_day }}</p>
-      <p class="core-metric">待确认 <b class="warn-text">{{ counts.pending }}</b></p>
-      <p class="core-metric">冲突 <b class="danger-text">{{ conflicts }}</b></p>
-      <p class="core-note">未读提醒 {{ unread_alerts }}</p>
+      <div class="dial-ring">
+        {% for s in sectors %}
+        <label class="sector" for="sector-{{ s.key }}" style="--i:{{ s.idx }}"><span>{{ s.label }}</span></label>
+        {% endfor %}
+      </div>
+
+      <div class="dial-core">
+        <p class="core-date">数据截至 {{ end_day }}</p>
+
+        {% for s in sectors %}
+        <div class="core-panel" data-sector="{{ s.key }}">
+          <p class="core-kicker">{{ s.kicker }}</p>
+          <p class="core-value">{{ s.value_text }}</p>
+          <p class="core-sub">{{ s.sub }}</p>
+        </div>
+        {% endfor %}
+
+        {% for s in sectors %}
+        <a class="core-enter" data-sector="{{ s.key }}" href="{{ s.href }}">进入{{ s.label }} →</a>
+        {% endfor %}
+
+        <p class="core-note">待确认 {{ counts.pending }} · 冲突 {{ conflicts }} · 未读 {{ unread_alerts }}</p>
+      </div>
     </div>
-  </div>
+
+    <p class="dial-hint">
+      点扇区只做预览，点「进入」才打开页面；键盘：Tab 到表盘后用方向键选，再 Tab 到「进入」按回车。
+      系统开启“减少动态效果”时，表盘不旋转、直接切换。
+    </p>
+  </section>
 
   <div class="chronos-tiles">
     {% for tile in tiles %}
     <a class="tile" href="{{ tile.href }}">
       <span class="tile-label">{{ tile.label }}</span>
       <span class="tile-value">{{ tile.value|human(tile.unit, tile.metric) }}</span>
-      <span class="tile-foot">近 7 天有效 {{ tile.days }}/7 天</span>
+      <span class="tile-foot">{% if tile.days %}近 7 天有效 {{ tile.days }}/7 天{% else %}近 7 天无数据{% endif %}</span>
     </a>
     {% endfor %}
   </div>
@@ -55,7 +78,7 @@
 </section>
 
 <p class="legend">
-  Demo 范围：表盘导航 + 中心摘要 + 模式持久化。拖动旋转与动画尚未实现；
-  系统开启"减少动态效果"时不播放任何动画。
+  表盘中心与简洁模式用同一份数据、同一套格式化，不做第二套口径；缺失显示“—”，不显示 0。
+  本模式不新增任何写操作。拖动自由旋转未实现（本项目零 JS），旋转仅为选中扇区时的定位动画，可被系统“减少动态效果”关闭。
 </p>
 {% endblock %}

@@ -175,3 +175,34 @@
 - **未验证项目**：平板真机（触控/宽度/横滚）、真实华为截图全链路、浏览器关 JS 实测、规则筛选下拉在规则增多后的分组
 - **剩余风险**：R1 首页指标卡对区间指标不显示参照行（设计如此，待用户确认是否要提示）；R2 空库时规则下拉仅"全部规则"；R3 `.mini::after` 热区相邻重叠未触屏实测
 - **状态**：待审核（通过后进 T05 Chronos 模式实现）
+
+---
+
+### 2026-10-20 — T05 — 时钟模式（Chronos）实现
+
+- **修改文件**（5 个，+216/−86）：
+  - `ui/templates/chronos.html`：重写为零 JS 两步交互（6 radio + 6 label 扇区、6 中心预览面板、6 个「进入」链接），去掉 Demo 徽标
+  - `ui/static/app.css`：选中高亮/环旋转/标签反旋/面板显示（纯兄弟选择器，不用 `:has`）；`.dial { overflow: hidden }` 裁旋转扫角；过渡仅在 `prefers-reduced-motion: no-preference`；`sector-input` opacity 0 + pointer-events none；删除 `badge-demo`
+  - `ui/app.py`：新增 `_dashboard_tiles()`（首页与表盘共用同一取数/格式化）与 `_chronos_sectors()`；`/chronos` 与首页 chronos 分支传同套上下文（修复首页 chronos 分支未传 tiles/sectors 的真实缺陷）
+  - `ui/templates/settings.html`：模式选项"时钟模式（Demo）"→"时钟模式"
+  - `tests/test_ui_pages.py`：`test_chronos_demo_page` 升级为 `test_chronos_page_structure`；模式文案断言同步
+- **新增文件**：
+  - `reports/T05_CHRONOS_UI_REPORT.md`
+  - `tests/test_t05_chronos.py`（14 条）
+  - `scripts/verify_t05_browser.js`（可选浏览器验证脚本，puppeteer-core + 本机 Chrome，非运行时依赖）
+- **删除文件**：无
+- **执行命令**：
+  - `.venv/Scripts/python.exe -m pytest` → **360 passed, 1 warning, EXIT=0**（346+14）
+  - `NODE_PATH=… node scripts/verify_t05_browser.js` → **14/14 passed**（无头 Chrome 129，1440×900；600–1440px 宽度扫描）
+  - 计时脚本（28 天 × 4 指标）：`/chronos` 25.8ms、`/` 26.2ms（TestClient 5 次均值）
+- **测试结果**：自动化 360 passed / 0 failed / 1 warning；浏览器 14/14；真机未测
+- **代码证据**：
+  - 同口径：`ui/app.py::_dashboard_tiles` 被 `/`（chronos 分支）与 `/chronos` 同时调用；测试断言两页出现同一格式化字符串
+  - 降级：过渡只在 `@media (prefers-reduced-motion: no-preference)`；`transition-duration=0s`（Chrome 实测）
+  - 两步交互：`<label class="sector">` 无 href，进入只能点 `.core-enter`
+- **浏览器验证中发现并修复的缺陷**：
+  - 旋转包围盒溢出：方形环 rotate(120deg) 包围盒 1.366 倍（768→1049px），800px 下 scrollWidth=925 → `.dial{overflow:hidden}` 后各宽度均无溢出
+  - 焦点环错位：隐藏 radio 不随环旋转，默认焦点框画在未旋转位置 → radio `opacity:0;pointer-events:none`，焦点环改画在 label 上
+- **未验证项目**：真实 Android 平板（华为浏览器）触控与横竖屏、Safari/Firefox 渲染、屏幕阅读器播报、强制颜色模式
+- **剩余风险**：R1 低端平板旋转掉帧；R2 `overflow:hidden` 裁掉悬停外缘 3px；R3 第 6 扇区切换可能"绕远路"
+- **状态**：待审核（通过后进 T06 最终回归）

@@ -10,7 +10,7 @@
   <form method="post" action="/settings/mode" class="mode-switch">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <input type="hidden" name="next_path" value="/settings">
-    {% for value, label in [('simple', '简洁模式'), ('chronos', '时钟模式（Demo）')] %}
+    {% for value, label in [('simple', '简洁模式'), ('chronos', '时钟模式')] %}
     <button class="mode-option {{ 'selected' if mode == value else '' }}" name="mode" value="{{ value }}">
       {{ label }}{% if mode == value %} · 当前{% endif %}
     </button>

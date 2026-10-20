@@ -8,8 +8,8 @@
 | T01 | 数据可靠性检查与必要修复 | 已批准 | `reports/T01_DATA_RELIABILITY_REPORT.md` | 用户 2026-10-20 13:46 批准（"继续02"） |
 | T02 | 安全、备份与 AI 回退 | 已批准 | `reports/T02_SECURITY_BACKUP_AI_REPORT.md` | 用户 2026-10-20 批准（"可以"）；4 缺陷修复 + 13 新测试；324 passed / 2 warnings |
 | T03 | 双 UI 设计方案与 Galaxy 选型 | 已批准 | `reports/T03_UI_DESIGN_GALAXY_REPORT.md` | 用户 2026-10-20 批准 D-1（Chronos 浅色）/ D-2（基线参数 28 天 / ≥14 天 / 2.5×MAD，U5 关闭）后进 T04 |
-| T04 | Simple 模式实现 | 待审核 | `reports/T04_SIMPLE_UI_REPORT.md` | 12 文件 +407/−128；346 passed / 1 warning；D-1/D-2/D-5 已随批准关闭 |
-| T05 | Chronos 模式实现 | 未开始 |  |  |
+| T04 | Simple 模式实现 | 已批准 | `reports/T04_SIMPLE_UI_REPORT.md` | 用户 2026-10-20 18:20 回复"继续"（在 T04 报告与"审核通过后进 T05"之后）；12 文件 +407/−128；346 passed |
+| T05 | Chronos 模式实现 | 待审核 | `reports/T05_CHRONOS_UI_REPORT.md` | 零 JS 两步交互；360 passed；浏览器 14/14；2 个渲染期缺陷（旋转溢出/焦点环错位）已修 |
 | T06 | 最终回归与交付检查 | 未开始 |  |  |
 
 ## 状态更新规则

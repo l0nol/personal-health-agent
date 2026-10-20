@@ -109,13 +109,16 @@ def test_trends_page_unknown_metric_falls_back(tmp_path):
     assert "指标趋势" in response.text
 
 
-def test_chronos_demo_page(tmp_path):
+def test_chronos_page_structure(tmp_path):
+    """T05：六扇区单选表盘 + 中心预览 + 普通入口；扇区本身不再直接跳转。"""
     with _client(tmp_path) as client:
         body = client.get("/chronos").text
 
     assert "表盘导航" in body
     assert "普通入口" in body
     assert body.count('class="sector"') == 6
+    assert body.count('class="sector-input"') == 6
+    assert body.count('class="core-enter"') == 6
 
 
 def test_mode_switch_persists_and_changes_home(tmp_path):
@@ -147,7 +150,7 @@ def test_settings_page_has_mode_section(tmp_path):
         body = client.get("/settings").text
 
     assert "外观" in body
-    assert "时钟模式（Demo）" in body
+    assert "时钟模式" in body
 
 
 def test_sidebar_groups_present_on_all_pages(tmp_path):

@@ -1,19 +1,18 @@
-# 交接说明（HANDOFF）· v0.1.2 + T04（2026-10-20 晚更新）
+# 交接说明（HANDOFF）· v0.1.2 + T04/T05（2026-10-20 晚更新）
 
 > 给接手的人或 AI：读完这一份，就能知道**现在在哪、为什么这么做、下一步做什么**。
 > 更细的设计取舍见 `docs/00-architecture-plan-v1.md` 的 §15 修订记录（V1.1–V1.5）。
-> 任务包门禁进度见 `TASK_STATUS.md`：T00–T02 已批准，T03 已批准（D-1/D-2 已裁决），
-> **T04 Simple 模式已实现、待审核**（`reports/T04_SIMPLE_UI_REPORT.md`），T05/T06 未开始。
+> 任务包门禁进度见 `TASK_STATUS.md`：T00–T04 已批准，**T05 已实现、待审核**
+> （`reports/T05_CHRONOS_UI_REPORT.md`），T06 未开始。
 
 ---
 
 ## 0. 一句话状态
 
 本地优先的个人健康数据工具，**P0 功能（任务 0–7）全部完成并有测试**；
-0.1.2 完成 UI 设计系统首轮落地（侧栏导航、仪表盘、睡眠/趋势页、时钟模式 Demo）；
-T04（2026-10-20）按批准方案实现 Simple 模式六页：指标卡"参照范围"行、设置页阈值只读表、
-导入五桶重排、提醒双空态与规则筛选、触控与焦点样式。测试 **346 passed**。
-**没有接真实设备数据，也没有接真实 AI 接口**。
+0.1.2 完成 UI 设计系统首轮落地；T04 落了 Simple 模式六页（参照范围行、五桶重排、阈值只读表等）；
+T05 把时钟模式从 Demo 升级为零 JS 两步环形导航（选择→预览→进入、键盘方向键、减少动态降级）。
+测试 **360 passed**，浏览器交互验证 14/14。**没有接真实设备数据，也没有接真实 AI 接口。**
 
 ---
 
@@ -41,7 +40,7 @@ T04（2026-10-20）按批准方案实现 Simple 模式六页：指标卡"参照�
 | 备份/恢复 + 指纹校验 | ✅ 实测过 | `backup.py`，`docs/02-runbook.md` §5 |
 | 界面：记录/导入/冲突/提醒/报告/设置 | ✅ 可用 | 0.1.1 交付；T04 重排（五桶顺序、三步条、阈值只读表、数据与隐私分区） |
 | 界面：首页仪表盘 / 睡眠分析 / 指标趋势 | ✅ 0.1.2 新增；T04 加"参照范围"行 | `ui/charts.py`、`tests/test_ui_pages.py`、`tests/test_t04_simple_ui.py` |
-| 时钟模式（表盘导航） | ⚠️ Demo：点击扇区 + 键盘可达；**无拖动旋转、无动画** | `templates/chronos.html`；T05 范围 |
+| 时钟模式（表盘导航） | ✅ T05：零 JS 两步交互（选扇区→预览→进入）、键盘方向键、减少动态降级；**无自由拖动旋转**（零 JS 约束，见 T05 报告 §2） | `templates/chronos.html`、`tests/test_t05_chronos.py`、`scripts/verify_t05_browser.js` |
 | 平板真机验证 | ❌ 未做，只有服务端行为证据 | `docs/03-tablet-access.md` |
 | 指标与设备字段核对 | ❌ 未做，37 个全为 `provisional` | `docs/01-data-dictionary.md` |
 
@@ -112,10 +111,10 @@ catalog.py   37 个指标的唯一事实源（含 verification 与 range_bound�
 | # | 事情 | 验收 |
 |---|---|---|
 | 1 | 用 1–2 张真实截图校正值域与单位，把核对过的改 `device_verified` | 数据字典中 `device_verified` 数量 > 0，且每项有核对记录 |
-| 2 | **T05：Chronos 模式**（表盘 6 扇区 ↔ 六页、中心预览同值、拖动旋转 + `prefers-reduced-motion` 降级、浅色） | 键盘与触屏完成同一路径；关闭动画后仍可用；346 条测试不退化为失败 |
-| 3 | **T06：最终回归与交付检查**（全量测试、打包自检、交付说明） | `scripts/package.py` 产物解压后测试通过 |
-| 4 | 平板实机（Chrome/华为浏览器）走一遍 6 个页面 | 触控 ≥44px、无横向滚动、导入可用 |
-| 5 | 逻辑键加入观测时刻（P2 前置） | 同日两次血压可并存，且各自可确认 |
+| 2 | **T06：最终回归与交付检查**（全量测试、打包自检、交付说明） | `scripts/package.py` 产物解压后测试通过 |
+| 3 | 平板实机（Chrome/华为浏览器）走一遍 6 个页面 + 时钟模式 | 触控 ≥44px、无横向滚动、导入可用、表盘旋转不掉帧 |
+| 4 | 逻辑键加入观测时刻（P2 前置） | 同日两次血压可并存，且各自可确认 |
+| 5 | 时钟模式自由拖动旋转（**需要 JS，与零 JS 铁律冲突，须用户裁决**） | 若批准：拖动与方向键完成同一路径；否则维持现状并保留说明 |
 | 6 | 提醒「不相关」反馈联动降频 | 连续 3 次不相关后该规则冷却延长，有测试 |
 
 ---
@@ -126,7 +125,7 @@ catalog.py   37 个指标的唯一事实源（含 verification 与 range_bound�
 python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements-dev.txt
 .venv/Scripts/python.exe -m pip install -e .
-.venv/Scripts/python.exe -m pytest          # 预期 346 passed
+.venv/Scripts/python.exe -m pytest          # 预期 360 passed
 .venv/Scripts/python.exe -m health_agent.cli serve
 # 浏览器 http://127.0.0.1:8000
 ```

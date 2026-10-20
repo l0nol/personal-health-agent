@@ -119,6 +119,67 @@ def _reference(conn, metric_name: str, end: date) -> dict:
     }
 
 
+def _dashboard_tiles(conn, end: date) -> list[dict]:
+    """首页与时钟模式共用的指标卡数据（同一来源、同一窗口、同一格式化）。
+
+    T05 铁律"表盘中心只显示与简洁模式相同的数值"靠这一个函数保证：
+    两处路由都调它，不做第二套口径；要改口径只改这里。
+    """
+    start = end - timedelta(days=6)
+    tiles = []
+    for name, href in (
+        ("night_sleep_minutes", "/sleep"),
+        ("resting_hr_bpm", "/trends?metric=resting_hr_bpm"),
+        ("steps_count", "/trends?metric=steps_count"),
+        ("activity_energy_kcal", "/trends?metric=activity_energy_kcal"),
+    ):
+        metric_summary = summarize(conn, name, start, end)
+        latest_point = metric_summary.points[-1] if metric_summary.points else None
+        tiles.append(
+            {
+                "metric": name,
+                "label": get_metric(name).display,
+                "value": latest_point.value if latest_point else None,
+                "date": latest_point.record_date if latest_point else None,
+                "unit": get_metric(name).unit,
+                "days": metric_summary.sample_days,
+                "status": metric_summary.status,
+                "href": href,
+                "reference": _reference(conn, name, end),
+            }
+        )
+    return tiles
+
+
+def _chronos_sectors(tiles, counts, conflicts, unread, end: date) -> list[dict]:
+    """表盘六扇区：预览值全部取自 _dashboard_tiles / 计数，不新算任何数。"""
+    sleep, hr = tiles[0], tiles[1]
+
+    def foot(tile) -> str:
+        return f"近 7 天有效 {tile['days']}/7 天" if tile["days"] else "近 7 天无数据"
+
+    return [
+        {"key": "sleep", "idx": 0, "label": "睡眠", "href": "/sleep",
+         "kicker": "昨夜睡眠", "sub": foot(sleep),
+         "value_text": format_number(sleep["value"], sleep["unit"], sleep["metric"])},
+        {"key": "trends", "idx": 1, "label": "趋势", "href": "/trends",
+         "kicker": "静息心率", "sub": foot(hr),
+         "value_text": format_number(hr["value"], hr["unit"], hr["metric"])},
+        {"key": "imports", "idx": 2, "label": "导入", "href": "/imports",
+         "kicker": "待确认记录", "sub": "写入后仍需逐条确认",
+         "value_text": f"{counts['pending']} 条"},
+        {"key": "alerts", "idx": 3, "label": "提醒", "href": "/alerts",
+         "kicker": "未读提醒", "sub": "同一窗口不重复 · 冷却 72 小时",
+         "value_text": f"{unread} 条"},
+        {"key": "reports", "idx": 4, "label": "报告", "href": "/reports",
+         "kicker": "已确认记录", "sub": f"数据截至 {end.isoformat()}",
+         "value_text": f"{counts['confirmed']} 条"},
+        {"key": "settings", "idx": 5, "label": "设置", "href": "/settings",
+         "kicker": "界面模式", "sub": "数据只在本机存储",
+         "value_text": "时钟"},
+    ]
+
+
 def create_app(settings: Settings | None = None, *, db_path: Path | None = None) -> FastAPI:
     settings = settings or load_settings()
     path = Path(db_path) if db_path else settings.db_path
@@ -256,33 +317,22 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
         end = latest_data_date(conn) or date.today()
         start = end - timedelta(days=6)
         config = config_from_settings(settings)
-        tiles = []
-        for name, href in (
-            ("night_sleep_minutes", "/sleep"),
-            ("resting_hr_bpm", "/trends?metric=resting_hr_bpm"),
-            ("steps_count", "/trends?metric=steps_count"),
-            ("activity_energy_kcal", "/trends?metric=activity_energy_kcal"),
-        ):
-            metric_summary = summarize(conn, name, start, end)
-            latest_point = metric_summary.points[-1] if metric_summary.points else None
-            tiles.append(
-                {
-                    "metric": name,
-                    "label": get_metric(name).display,
-                    "value": latest_point.value if latest_point else None,
-                    "date": latest_point.record_date if latest_point else None,
-                    "unit": get_metric(name).unit,
-                    "days": metric_summary.sample_days,
-                    "status": metric_summary.status,
-                    "href": href,
-                    "reference": _reference(conn, name, end),
-                }
-            )
+        tiles = _dashboard_tiles(conn, end)
         sleep_chart = build_bars(_series(conn, "night_sleep_minutes", start, end),
                                  target=float(config.sleep_target_minutes), height=150)
         if mode == "chronos":
-            return render(request, "chronos.html", mode=mode, counts=counts,
-                          conflicts=conflicts, unread_alerts=unread_alerts)
+            # 与 /chronos 路由同一套上下文（tiles/sectors 同源），否则表盘会空转
+            return render(
+                request,
+                "chronos.html",
+                mode=mode,
+                counts=counts,
+                conflicts=conflicts,
+                unread_alerts=unread_alerts,
+                tiles=tiles,
+                sectors=_chronos_sectors(tiles, counts, conflicts, unread_alerts, end),
+                end_day=end.isoformat(),
+            )
         recent = _items(repository.list_records(conn, limit=10))
         batches = conn.execute(
             "SELECT * FROM import_batches ORDER BY imported_at DESC LIMIT 5"
@@ -754,26 +804,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
     @app.get("/chronos", response_class=HTMLResponse)
     def chronos(request: Request, conn=Depends(get_db)):
         end = latest_data_date(conn) or date.today()
-        start = end - timedelta(days=6)
-        tiles = []
-        for name, href in (
-            ("night_sleep_minutes", "/sleep"),
-            ("resting_hr_bpm", "/trends?metric=resting_hr_bpm"),
-            ("steps_count", "/trends?metric=steps_count"),
-            ("activity_energy_kcal", "/trends?metric=activity_energy_kcal"),
-        ):
-            summary = summarize(conn, name, start, end)
-            latest = summary.points[-1] if summary.points else None
-            tiles.append(
-                {
-                    "metric": name,
-                    "label": get_metric(name).display,
-                    "value": latest.value if latest else None,
-                    "unit": get_metric(name).unit,
-                    "days": summary.sample_days,
-                    "href": href,
-                }
-            )
+        tiles = _dashboard_tiles(conn, end)
         counts = {
             "pending": repository.count_records(conn, status="pending"),
             "confirmed": repository.count_records(conn, status="confirmed"),
@@ -781,14 +812,16 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
         conflicts = conn.execute(
             "SELECT COUNT(*) AS n FROM conflicts WHERE resolution = 'pending'"
         ).fetchone()["n"]
+        unread = alert_store.count_unread(conn)
         return render(
             request,
             "chronos.html",
             mode=ui_mode(conn),
             tiles=tiles,
+            sectors=_chronos_sectors(tiles, counts, conflicts, unread, end),
             counts=counts,
             conflicts=conflicts,
-            unread_alerts=alert_store.count_unread(conn),
+            unread_alerts=unread,
             end_day=end.isoformat(),
         )
 
