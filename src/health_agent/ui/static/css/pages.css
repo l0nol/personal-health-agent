@@ -12,6 +12,12 @@
   /* 环形导航整块旋转时方框的角会扫出容器（120° 时包围盒约 1.37 倍），
      裁掉才不会把页面撑出横向滚动；扇区半径 ≤148+34px，仍在裁切范围内 */
   overflow: hidden; }
+
+/* 老内核（Chromium < 88，部分定制浏览器）不支持 aspect-ratio：用 padding 撑出正方形，
+   否则表盘高度为 0（子元素全是绝对定位） */
+@supports not (aspect-ratio: 1) {
+  .dial::before { content: ""; display: block; padding-bottom: 100%; }
+}
 .dial-face {
   position: absolute; inset: 6%;
   border-radius: 50%; background: var(--surface);

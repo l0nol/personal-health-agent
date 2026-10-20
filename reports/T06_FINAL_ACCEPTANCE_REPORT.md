@@ -156,3 +156,14 @@
 阻断项：无。一般问题：无。未验证事项已在 §7 列明，不得对外宣称已验证。
 
 > 交付前动作：批准后执行 `scripts/package.py` 重新生成 `dist/`（当前 dist 为 T04 之前的旧包）。
+
+---
+
+## 9. 修订记录
+
+- **2026-10-20 22:00（用户裁决后）**：指标注册表移除血压两项（`blood_pressure_systolic_mmhg` /
+  `blood_pressure_diastolic_mmhg`），执行理由：用户设备测压不准，不采集该项。
+  数据字典重新生成（35 个指标），新增回归测试 `test_blood_pressure_metrics_are_removed`；
+  全量测试 **378 passed**（376 + 血压移除守门 + 移动端兼容守门）。
+  同一轮为联想平板/联想浏览器补充移动端兼容规则（`text-size-adjust`、`touch-action`、
+  `100dvh`、`aspect-ratio` 兜底），见 `docs/03-tablet-access.md` §5。

@@ -153,3 +153,14 @@ def test_templates_do_not_contain_inline_scripts():
     for path in TEMPLATES.glob("*.html"):
         source = re.sub(r"\{#.*?#\}", "", path.read_text(encoding="utf-8"), flags=re.S)
         assert "<script" not in source, path.name
+
+
+def test_mobile_browser_compatibility_rules():
+    """Android 定制浏览器（联想/华为）需要的兜底规则必须在样式里。"""
+    css = read_css()
+
+    assert "-webkit-text-size-adjust: 100%" in css      # 防止字体放大挤坏布局
+    assert "touch-action: manipulation" in css           # 去掉 300ms 点按延迟
+    assert "-webkit-tap-highlight-color" in css          # 去掉灰底闪烁
+    assert "@supports (height: 100dvh)" in css           # 地址栏收放不跳
+    assert "@supports not (aspect-ratio: 1)" in css      # 老内核下表盘不塌成 0 高

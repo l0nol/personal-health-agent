@@ -35,7 +35,7 @@ cp .env.example .env          # 按需修改；不填密钥也能完整使用
 
 浏览器打开 `http://127.0.0.1:8000`。
 
-`init` 会建库并把 37 个指标写进 `metrics_catalog`，幂等，可重复执行。
+`init` 会建库并把 35 个指标写进 `metrics_catalog`，幂等，可重复执行。
 
 ## 3. 日常流程
 

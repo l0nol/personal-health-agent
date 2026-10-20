@@ -149,3 +149,17 @@ def test_invariant_rejects_range_metric_in_report():
         assert "范围端点" in str(exc)
     else:
         raise AssertionError("不变式没有拦住 range_bound 指标进入报告")
+
+
+def test_blood_pressure_metrics_are_removed():
+    """2026-10-20 用户裁决：设备测压不准，血压两项不再采集。
+
+    这两项不得以任何名字回到注册表——否则导入会重新接受它们，
+    指标卡/趋势也会出现"我们有这个数据"的误解。
+    """
+    from health_agent.catalog import METRICS
+
+    names = {metric.name for metric in METRICS}
+    assert "blood_pressure_systolic_mmhg" not in names
+    assert "blood_pressure_diastolic_mmhg" not in names
+    assert not any("blood_pressure" in name for name in names)

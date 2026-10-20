@@ -149,10 +149,7 @@ METRICS: tuple[MetricSpec, ...] = (
     _m("stress_score", "压力评分", "score", "score", _DAY, "P1", True, 0, 100,
        "设备原值存储，不生成任何医学结论"),
     # ---------- P2：后续扩展 ----------
-    _m("blood_pressure_systolic_mmhg", "收缩压", "mmHg", "scalar", _MEASURED, "P2", False, 50, 260,
-       "仅在来源与测量方式明确时录入", review_required=True),
-    _m("blood_pressure_diastolic_mmhg", "舒张压", "mmHg", "scalar", _MEASURED, "P2", False, 30, 160,
-       "仅在来源与测量方式明确时录入", review_required=True),
+    # 血压（收缩压/舒张压）已于 2026-10-20 移除：用户设备测量不准，不采集该项。
     _m("blood_glucose_mmol_l", "血糖", "mmol/L", "scalar", _MEASURED, "P2", False, 1.0, 40.0,
        "仅在来源与测量方式明确时录入", review_required=True),
     _m("body_temperature_c", "体温", "°C", "scalar", _MEASURED, "P2", False, 30.0, 45.0,

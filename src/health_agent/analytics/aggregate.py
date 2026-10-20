@@ -109,7 +109,7 @@ def load_points(
         (metric_name, _iso_arg(start), _iso_arg(end)),
     ).fetchall()
 
-    # 同一天可能有多条（血压、体温这类瞬时测量），只取最后一条，
+    # 同一天可能有多条（体温、体重这类瞬时测量），只取最后一条，
     # 避免"一天两个值"被平均成中间值而失真。
     latest: dict[str, Point] = {}
     for row in rows:

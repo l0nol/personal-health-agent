@@ -262,3 +262,29 @@
 - **测试结果**：376 passed ×2（源码 + 解压）；未改任何业务代码
 - **未验证**：依赖全新安装路径（复用现有 venv，未重装依赖）；平板真机；真实截图数据
 - **状态**：T06 仍待审核；发布包已更新
+
+---
+
+### 2026-10-20 — 产品范围变更：移除血压指标 + 联想平板/浏览器兼容
+
+- **触发**：用户裁决"血压观测可以先删除，因为我的设备测的不准"；并提供平板型号
+  （联想 Yoga Pad Pro 12.7 元启版，优先适配联想浏览器）。
+- **修改文件**：
+  - `catalog.py`：删除 `blood_pressure_systolic_mmhg` / `blood_pressure_diastolic_mmhg`（含注释说明裁决），指标 37 → 35
+  - `docs/01-data-dictionary.md`：由脚本重新生成（35 个指标）
+  - `static/css/base.css`：`text-size-adjust: 100%`（防 Android 字体放大）、`-webkit-tap-highlight-color`、`touch-action: manipulation`、`100dvh` 兜底
+  - `static/css/pages.css`：`@supports not (aspect-ratio: 1)` 表盘高度兜底（老内核不塌成 0 高）
+  - 文案同步：`README.md`、`docs/00`、`docs/02`、`docs/05`、`docs/07`、`scripts/gen_data_dictionary.py`、`scripts/package.py`（"血压"示例改"体温/体重"；37 → 35）
+  - `docs/03-tablet-access.md`：新增 §5 联想 Yoga Pad Pro 12.7 + 联想浏览器（三项设置、内核判定、十项验证表、已知风险）
+  - `docs/07-workbench-checklist.md`：顶部加入"搭建由用户发起，未经确认不启动"；平板行落到具体型号；"明确不做"补不采集血压
+  - `reports/T06_FINAL_ACCEPTANCE_REPORT.md`：追加修订记录
+- **新增测试**：`test_blood_pressure_metrics_are_removed`（注册表不得复活血压）、
+  `test_mobile_browser_compatibility_rules`（五条兼容规则存在）
+- **执行命令**：
+  - `.venv/Scripts/python.exe -m pytest` → **378 passed, 1 warning, EXIT=0**
+  - `.venv/Scripts/python.exe scripts/gen_data_dictionary.py` → 35 个指标
+  - `.venv/Scripts/python.exe scripts/package.py` → 111 文件 350KB，sha256 `23ea3d88…`，源码与解压自检均 378 passed
+- **测试结果**：378 passed / 0 failed / 0 skipped / 1 warning（第三方）
+- **未验证**：联想浏览器真机内核版本与实际渲染；12.7 英寸横竖屏；字体放大一档的实际溢出情况
+- **剩余风险**：已有数据库的 `metrics_catalog` 会残留两行血压记录（不影响使用；全新 init 不会出现）
+- **状态**：T06 仍待审核（报告已附修订记录）

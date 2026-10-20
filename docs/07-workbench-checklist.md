@@ -2,6 +2,8 @@
 
 > 用途：确认"要跑起来还缺什么"。代码侧已就绪（T06 验收结论 A），
 > 剩下的是**数据、设备、配置**三类前置。本文所有"已具备"项都在 2026-10-20 实测过。
+>
+> **搭建由你发起**：本文只列条件与步骤，我不会在你确认前启动服务、建库或改 `data/`。
 
 ---
 
@@ -9,7 +11,7 @@
 
 ```bash
 cd personal-health-agent
-.venv/Scripts/python.exe -m health_agent.cli init      # 首次：建库 + 37 个指标
+.venv/Scripts/python.exe -m health_agent.cli init      # 首次：建库 + 35 个指标
 .venv/Scripts/python.exe -m health_agent.cli serve     # 打开 http://127.0.0.1:8000
 ```
 
@@ -23,11 +25,11 @@ cd personal-health-agent
 |---|---|---|---|---|
 | 1 | Python 3.13 | 运行 | ✅ 已具备（项目 `.venv`，3.13.14） | 装 Python 3.12+ 后 `python -m venv .venv` |
 | 2 | 依赖包 | 运行 | ✅ 已装（`requirements-dev.txt`） | `.venv/Scripts/python.exe -m pip install -r requirements-dev.txt` |
-| 3 | 数据库 | 存数据 | ✅ 自动建（11 表 / 37 指标） | 删 `data/health.db` 后重跑 `init` |
+| 3 | 数据库 | 存数据 | ✅ 自动建（11 表 / 35 指标） | 删 `data/health.db` 后重跑 `init` |
 | 4 | 浏览器 | 看界面 | ✅ Chrome / Edge / 华为浏览器 | 建议 Chromium 105+（表盘用到 `aspect-ratio`、`:focus-visible`） |
 | 5 | 访问密码 | 局域网/平板访问 | ⬜ 可选，本机用不需要 | `.venv/Scripts/python.exe -m health_agent.cli passwd`，把输出写入 `.env` |
 | 6 | 局域网开启 | 平板访问 | ⬜ 默认关闭 | `.env` 加 `HEALTH_AGENT_LAN=1` + 密码，重启 |
-| 7 | 平板 | 触控与窄屏实测 | ⬜ **缺设备** | 有 Android 平板 + 同一 Wi-Fi 即可；步骤见 `docs/03-tablet-access.md` |
+| 7 | 平板 | 触控与窄屏实测 | ⬜ 设备已定：联想 Yoga Pad Pro 12.7（元启版） | 按 `docs/03-tablet-access.md` §5 的三项设置 + 十项验证表执行；重点看联想浏览器内核 ≥88 |
 | 8 | 真实健康数据 | 替换示例数据 | ⬜ **缺素材** | 华为运动健康截图 → 按下表字段提取 CSV/JSON |
 | 9 | DeepSeek 密钥 | 简报 AI 改写 | ⬜ 可选，不填就用本地模板文案 | `.env` 加 `DEEPSEEK_API_KEY=...` |
 | 10 | 备份目录 | 数据安全 | ✅ 自动（`data/backup/`） | 已实测：`cli backup` 生成 zip + manifest（含 sha256） |
@@ -71,7 +73,7 @@ python -m venv .venv
 | 步骤 | 结果 |
 |---|---|
 | 解压产物 | 110 文件 |
-| `cli init` | 建库成功，指标注册表 37 条 |
+| `cli init` | 建库成功，指标注册表 35 条 |
 | `cli import sample_with_issues.csv` | 预览正常 → `--commit` 入库 6 条 pending / 拒绝 4 |
 | `cli backup` | 生成 zip + manifest（sha256） |
 | `cli serve` + 11 个端点 | `/ /sleep /trends /chronos /records /imports /alerts /settings /healthz /export.csv /static/css/tokens.css` **全部 200** |
@@ -113,13 +115,14 @@ python -m venv .venv
 
 | 任务 | 验收口径 | 风险 |
 |---|---|---|
-| 逻辑键加入观测时刻 | 同日两次血压可并存、各自可确认 | 改唯一性定义 + 表结构迁移，会影响导入去重 |
+| 逻辑键加入观测时刻 | 同日两次体温可并存、各自可确认 | 改唯一性定义 + 表结构迁移，会影响导入去重 |
 | 提醒「不相关」反馈联动降频 | 连续 3 次不相关后该规则冷却延长，有测试 | 改规则冷却语义，需确认"连续"的窗口 |
 | HTTPS + 多人访问 | — | 当前是单密码 + 本机/局域网，上公网必须先做这个 |
 
 ### 6.4 明确不做（避免误会）
 
 - 不做医疗诊断/风险预测；不做"健康总分"
+- **不采集血压**（2026-10-20 裁决：设备测压不准，指标注册表已移除收缩压/舒张压）
 - 不接华为隐私中心加密包通道（数据源已裁决为截图提取）
 - 不做深色主题（D-1 裁决：浅色即可，深色 token 预留但不启用）
 - 不引入前端框架/构建链（零 JS 是当前基线，加脚本走 `base.html` 的 `scripts` 块）

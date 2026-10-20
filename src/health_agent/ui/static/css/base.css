@@ -5,6 +5,13 @@
 
 * { box-sizing: border-box; }
 
+html {
+  /* Android 浏览器（联想浏览器/华为浏览器等）会做"字体放大"，
+     不锁住会把指标卡与表盘文字挤变形 */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -12,6 +19,16 @@ body {
   font-family: var(--font);
   font-size: 14px;
   line-height: 1.6;
+  -webkit-tap-highlight-color: transparent;  /* 触屏点按不要灰底闪烁 */
+}
+
+/* 可点元素去掉 300ms 双 tap 延迟（Chromium 内核移动浏览器通用） */
+a, button, .btn, .nav-link, .sector, .seg-item, .core-enter { touch-action: manipulation; }
+
+/* 地址栏收放时 100vh 会跳；支持的浏览器用 dvh */
+.app { min-height: 100vh; }
+@supports (height: 100dvh) {
+  .app { min-height: 100dvh; }
 }
 
 a { color: var(--primary); text-decoration: none; }

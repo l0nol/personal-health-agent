@@ -26,7 +26,7 @@
 
 | period_type | 含义 | 是否进日趋势 | 是否进报告 |
 |---|---|---|---|
-| `instant` | 单次测量（血压、体温等） | 是（同一天多条取最后一条） | 仅当其指标 `in_report=1` |
+| `instant` | 单次测量（体温、体重等） | 是（同一天多条取最后一条） | 仅当其指标 `in_report=1` |
 | `day` | 当日汇总 | 是 | 是（若 `in_report=1`） |
 | `week` | 设备周视图的平均/汇总 | **否**（只做对照，不可拆成日值） | 否 |
 | `month` | 设备月视图 | **否** | 否 |
@@ -71,8 +71,6 @@
 | `sleep_avg_spo2_percent` | 睡眠平均血氧 | `%` | percent | 50 ~ 100 | day | P1 | 是 | provisional | 睡眠期间平均血氧，独立于日间血氧 |
 | `respiratory_rate_avg_brpm` | 平均呼吸率 | `brpm` | scalar | 4 ~ 40 | day | P1 | 是 | provisional | 睡眠期间平均呼吸率 |
 | `stress_score` | 压力评分 | `score` | score | 0 ~ 100 | day | P1 | 是 | provisional | 设备原值存储，不生成任何医学结论 |
-| `blood_pressure_systolic_mmhg` | 收缩压 | `mmHg` | scalar | 50 ~ 260 | instant/day | P2 | 否 | provisional | 仅在来源与测量方式明确时录入 |
-| `blood_pressure_diastolic_mmhg` | 舒张压 | `mmHg` | scalar | 30 ~ 160 | instant/day | P2 | 否 | provisional | 仅在来源与测量方式明确时录入 |
 | `blood_glucose_mmol_l` | 血糖 | `mmol/L` | scalar | 1 ~ 40 | instant/day | P2 | 否 | provisional | 仅在来源与测量方式明确时录入 |
 | `body_temperature_c` | 体温 | `°C` | scalar | 30 ~ 45 | instant/day | P2 | 否 | provisional | 仅在来源与测量方式明确时录入 |
 | `weight_kg` | 体重 | `kg` | scalar | 20 ~ 300 | instant/day | P2 | 否 | provisional | 可选记录，不作为体重控制目标 |
@@ -83,10 +81,10 @@
 
 ## 本次统计
 
-- 指标总数：37
+- 指标总数：35
 - 进报告：20
 - 范围端点（不进报告）：4
 - 已与设备核对（`device_verified`）：0
-- 暂定定义（`provisional`）：37
+- 暂定定义（`provisional`）：35
 
 报告实际使用的指标：`night_sleep_minutes`, `nap_minutes`, `resting_hr_bpm`, `sleep_avg_hr_bpm`, `steps_count`, `activity_energy_kcal`, `deep_sleep_percent`, `light_sleep_percent`, `rem_sleep_percent`, `awake_count`, `deep_sleep_continuity_score`, `sleep_breathing_quality_score`, `sleep_score`, `daily_hr_min_bpm`, `daily_hr_max_bpm`, `hrv_avg_ms`, `spo2_avg_percent`, `sleep_avg_spo2_percent`, `respiratory_rate_avg_brpm`, `stress_score`
