@@ -103,7 +103,7 @@ def test_instant_records_from_different_sources_keep_last(conn):
     """不同来源的同日瞬时记录可以并存，统计时只取最后一条，避免两个值被平均。"""
     first = insert_record(
         conn,
-        make_record(metric_name="weight_kg", unit="kg", value=79.3, source_app="manual_entry"),
+        make_record(metric_name="weight_kg", unit="kg", value=68.4, source_app="manual_entry"),
         status="confirmed",
     )
     second = insert_record(
@@ -128,7 +128,7 @@ def test_same_source_second_instant_reading_is_blocked(conn):
     from health_agent.errors import RecordStateError
     from health_agent.storage.lifecycle import confirm_record as confirm
 
-    first = insert_record(conn, make_record(metric_name="weight_kg", unit="kg", value=79.3), status="pending")
+    first = insert_record(conn, make_record(metric_name="weight_kg", unit="kg", value=68.4), status="pending")
     confirm(conn, first)
 
     second = insert_record(conn, make_record(metric_name="weight_kg", unit="kg", value=78.9), status="pending")
