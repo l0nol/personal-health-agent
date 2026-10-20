@@ -57,7 +57,8 @@
 
 ### 5.1 自动化（pytest，服务端 + HTML 结构 + CSS 静态断言）
 
-**截图证据**：`docs/preview/t05-chronos-default.png`（默认选中睡眠）、
+**截图证据**（本地留档，按 `.gitignore` 的 `*.png` 规则不入库，与"截图不进仓库"的既有隐私约定一致）：
+`docs/preview/t05-chronos-default.png`（默认选中睡眠）、
 `docs/preview/t05-chronos-keyboard.png`（方向键切到趋势、焦点环落在选中扇区）。
 
 - **总数 360 / 通过 360 / 失败 0 / 跳过 0 / 警告 1（starlette 第三方）/ 退出码 0**（T04 后 346 → +14）
