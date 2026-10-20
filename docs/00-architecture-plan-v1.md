@@ -552,7 +552,7 @@ analytics 摘要(dict) ──▶ ai_client.summarize()
 | 项 | V1.0 方案 | V1.1 裁决 |
 |---|---|---|
 | 主数据源 | 截图提取的 JSON/CSV（豆包辅助）+ 华为导出包两种混用 | **只保留第一版口径**：截图提取结果 → JSON/CSV 导入。不引入华为隐私中心加密包通道，不新增 `huawei_health_loader` |
-| 字段命名 | canonical 用规格 §4 字段名，另备外部映射 | **canonical 即规格 §4 字段名**，已固化为 `src/health_agent/catalog.py`（0.1.1 起 37 个指标；2026-10-20 移除血压两项后为 35 个）。不为任何外部导出格式的字段名让路 |
+| 字段命名 | canonical 用规格 §4 字段名，另备外部映射 | **canonical 即规格 §4 字段名**，已固化为 `src/health_agent/catalog.py`（0.1.1 起 37 个指标；2026-10-20 移除血压 2 项、新增单次心率/血氧/训练指数/最大摄氧量/跑力指数 5 项，现为 40 个）。不为任何外部导出格式的字段名让路 |
 | OCR 截图通道 | 主通道 | 降为**实验性**，输出一律 `pending`，不纳入 P0 主流程 |
 | U1 DeepSeek 接口 | 待确认 | **仍为待确认**。仅保留 `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` 两个可配置项的占位默认值，不写任何网络调用代码（任务 6 之前） |
 
@@ -598,7 +598,7 @@ analytics 摘要(dict) ──▶ ai_client.summarize()
 | 睡眠目标默认值被当成"用户的目标" | 新增 `sleep_target_user_supplied`；未配置时文案明确写"默认参考值…未按年龄、性别或作息调整" |
 | 是否做了年龄适配 | 没做。`AGE_ADAPTATION_IMPLEMENTED = False`，测试断言，文档与文案均如实说明 |
 | HRV / 血氧区间被平均的风险 | 新增 `range_bound` 类型与 4 个端点指标；注册表导入即断言"端点指标不得进报告"；`REPORT_METRICS` 不含它们 |
-| 指标定义可信度不可见 | 新增 `verification` 字段（`provisional` / `device_verified`），当前 35 个全为 `provisional` |
+| 指标定义可信度不可见 | 新增 `verification` 字段（`provisional` / `device_verified`），当前 40 个全为 `provisional` |
 | 文档与代码漂移 | `alert_feedback` 表不存在（实际是 `alerts.feedback` 列）；规则表述误写 `total_sleep_minutes`（实际用 `night_sleep_minutes`）——均已更正 |
 | 死配置 | 删除从未被读取使用的 `HEALTH_AGENT_TZ` |
 

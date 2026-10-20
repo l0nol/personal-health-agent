@@ -19,6 +19,34 @@ DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
 DEFAULT_MODEL = "deepseek-chat"
 
 
+def read_env_file(path: Path) -> dict[str, str]:
+    """读取 KEY=VALUE 形式的 .env 文件（零依赖，不引第三方库）。
+
+    - 不存在或读不了 → 返回空字典，绝不因此启动失败
+    - 忽略空行与 `#` 注释；允许值两侧带引号
+    - 只做最朴素的解析：不支持多行值、变量插值等花哨语法
+    """
+    if not path.is_file():
+        return {}
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except OSError:
+        return {}
+    values: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key:
+            values[key] = value
+    return values
+
+
 def _as_bool(raw: str | None, default: bool) -> bool:
     if raw is None or raw.strip() == "":
         return default
@@ -79,9 +107,16 @@ def load_settings(
     *,
     project_root: Path | None = None,
 ) -> Settings:
-    """从环境变量装载配置并做合法性校验。"""
-    env = os.environ if env is None else env
+    """从环境变量装载配置并做合法性校验。
+
+    取值顺序：进程环境变量 > 项目根目录的 `.env` 文件 > 内置默认值。
+    这样 `.env` 是"本机配置入口"，而临时覆盖（如测试、命令行前置变量）仍然有效。
+    """
     root = PROJECT_ROOT if project_root is None else project_root
+    merged = read_env_file(root / ".env")
+    source = os.environ if env is None else env
+    merged.update({key: str(value) for key, value in source.items()})
+    env = merged
 
     data_dir = Path(env.get("HEALTH_AGENT_DATA_DIR", "data"))
     if not data_dir.is_absolute():

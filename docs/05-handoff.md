@@ -3,7 +3,8 @@
 > 给接手的人或 AI：读完这一份，就能知道**现在在哪、为什么这么做、下一步做什么**。
 > 更细的设计取舍见 `docs/00-architecture-plan-v1.md` 的 §15 修订记录（V1.1–V1.5）。
 > 任务包门禁进度见 `TASK_STATUS.md`：T00–T05 已批准，**T06 待审核**（结论 A，`reports/T06_FINAL_ACCEPTANCE_REPORT.md`）。
-> **UI 要改版/加功能，先读 `docs/06-ui-extension-guide.md`**。
+> **工作台整体结构（模块/布局/数据来源/交互/配置）看 `docs/08-workbench-overview.md`；**
+> **UI 要改版/加功能，先读 `docs/06-ui-extension-guide.md`。**
 
 ---
 
@@ -44,7 +45,7 @@ T05 把时钟模式从 Demo 升级为零 JS 两步环形导航；T06 完成最�
 | 界面：首页仪表盘 / 睡眠分析 / 指标趋势 | ✅ 0.1.2 新增；T04 加"参照范围"行 | `ui/charts.py`、`tests/test_ui_pages.py`、`tests/test_t04_simple_ui.py` |
 | 时钟模式（表盘导航） | ✅ T05：零 JS 两步交互（选扇区→预览→进入）、键盘方向键、减少动态降级；**无自由拖动旋转**（零 JS 约束，见 T05 报告 §2） | `templates/chronos.html`、`tests/test_t05_chronos.py`、`scripts/verify_t05_browser.js` |
 | 平板真机验证 | ❌ 未做，只有服务端行为证据 | `docs/03-tablet-access.md` |
-| 指标与设备字段核对 | ❌ 未做，35 个全为 `provisional` | `docs/01-data-dictionary.md` |
+| 指标与设备字段核对 | ❌ 未做，40 个全为 `provisional` | `docs/01-data-dictionary.md` |
 
 ---
 
@@ -65,7 +66,7 @@ ingestion/   读文件 → 五桶预览 → 落库（全 pending）
 storage/     SQLite 迁移、repository、状态机、导出、备份
 validation/  单位白名单、单行校验（纯函数，不碰数据库）
 ai_client/   LLM 契约、HTTP 客户端、缓存、降级
-catalog.py   35 个指标的唯一事实源（含 verification 与 range_bound）
+catalog.py   40 个指标的唯一事实源（含 verification 与 range_bound）
 ```
 
 **依赖方向**：`ui → reports/ingestion → analytics/rules → storage`，`storage → validation`。
@@ -102,7 +103,7 @@ catalog.py   35 个指标的唯一事实源（含 verification 与 range_bound�
 
 ## 6. 已知限制（不要对外宣称已解决）
 
-- 35 个指标全部 `provisional`，**未与任何设备官方字段核对**，值域可能误拒合法值。
+- 40 个指标全部 `provisional`，**未与任何设备官方字段核对**，值域可能误拒合法值。
 - 睡眠目标**没有**年龄适配（无年龄字段）；默认 420 分钟只是参考值。
 - 逻辑键只到日期粒度：同来源同日第二条瞬时测量会进冲突流程（P2 指标启用前必修）。
 - 无 HTTPS、单密码鉴权；不要暴露公网。

@@ -71,6 +71,11 @@
 | `sleep_avg_spo2_percent` | 睡眠平均血氧 | `%` | percent | 50 ~ 100 | day | P1 | 是 | provisional | 睡眠期间平均血氧，独立于日间血氧 |
 | `respiratory_rate_avg_brpm` | 平均呼吸率 | `brpm` | scalar | 4 ~ 40 | day | P1 | 是 | provisional | 睡眠期间平均呼吸率 |
 | `stress_score` | 压力评分 | `score` | score | 0 ~ 100 | day | P1 | 是 | provisional | 设备原值存储，不生成任何医学结论 |
+| `training_index` | 训练指数 | `score` | score | 0 ~ 10 | instant/day | P2 | 否 | provisional | 华为训练指数原值（如 3.6 很好）；设备原值存储，不做医学解读 |
+| `vo2max_ml_kg_min` | 最大摄氧量 | `mL/kg/min` | scalar | 10 ~ 90 | instant/day | P2 | 否 | provisional | 设备估算值，非实验室测量；只作趋势参考 |
+| `running_index` | 跑力指数 | `score` | score | 0 ~ 100 | instant/day | P2 | 否 | provisional | 华为跑力指数原值（如 21.9 D 级）；等级只记在备注，不参与计算 |
+| `heart_rate_spot_bpm` | 单次心率测量 | `bpm` | scalar | 30 ~ 220 | instant/day | P2 | 否 | provisional | 设备页面上的单次心率读数；不是静息心率，也不是日均值 |
+| `spo2_spot_percent` | 单次血氧测量 | `%` | percent | 50 ~ 100 | instant/day | P2 | 否 | provisional | 设备页面上的单次血氧读数；不是日均值 |
 | `blood_glucose_mmol_l` | 血糖 | `mmol/L` | scalar | 1 ~ 40 | instant/day | P2 | 否 | provisional | 仅在来源与测量方式明确时录入 |
 | `body_temperature_c` | 体温 | `°C` | scalar | 30 ~ 45 | instant/day | P2 | 否 | provisional | 仅在来源与测量方式明确时录入 |
 | `weight_kg` | 体重 | `kg` | scalar | 20 ~ 300 | instant/day | P2 | 否 | provisional | 可选记录，不作为体重控制目标 |
@@ -81,10 +86,10 @@
 
 ## 本次统计
 
-- 指标总数：35
+- 指标总数：40
 - 进报告：20
 - 范围端点（不进报告）：4
 - 已与设备核对（`device_verified`）：0
-- 暂定定义（`provisional`）：35
+- 暂定定义（`provisional`）：40
 
 报告实际使用的指标：`night_sleep_minutes`, `nap_minutes`, `resting_hr_bpm`, `sleep_avg_hr_bpm`, `steps_count`, `activity_energy_kcal`, `deep_sleep_percent`, `light_sleep_percent`, `rem_sleep_percent`, `awake_count`, `deep_sleep_continuity_score`, `sleep_breathing_quality_score`, `sleep_score`, `daily_hr_min_bpm`, `daily_hr_max_bpm`, `hrv_avg_ms`, `spo2_avg_percent`, `sleep_avg_spo2_percent`, `respiratory_rate_avg_brpm`, `stress_score`

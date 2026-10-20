@@ -90,7 +90,8 @@
     <dt>数据库 schema</dt><dd>v{{ schema_version }}</dd>
     <dt>数据库</dt><dd>{{ db_path }}</dd>
     <dt>局域网访问</dt><dd>{{ '开启（需要密码）' if lan_enabled else '关闭（仅本机）' }}</dd>
-    <dt>AI 分析</dt><dd>{{ '已配置密钥' if ai_enabled else '未配置，简报将使用本地模板文案' }}</dd>
+    <dt>AI 分析</dt>
+    <dd>{% if ai_enabled %}已配置密钥{% else %}未配置，简报将使用本地模板文案；要启用就在项目根目录 `.env` 里填写 <code>DEEPSEEK_API_KEY</code> 后重启{% endif %}</dd>
   </dl>
 </section>
 {% endblock %}

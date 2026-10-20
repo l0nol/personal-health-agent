@@ -150,6 +150,16 @@ METRICS: tuple[MetricSpec, ...] = (
        "设备原值存储，不生成任何医学结论"),
     # ---------- P2：后续扩展 ----------
     # 血压（收缩压/舒张压）已于 2026-10-20 移除：用户设备测量不准，不采集该项。
+    _m("training_index", "训练指数", "score", "score", _MEASURED, "P2", False, 0, 10,
+       "华为训练指数原值（如 3.6 很好）；设备原值存储，不做医学解读", review_required=True),
+    _m("vo2max_ml_kg_min", "最大摄氧量", "mL/kg/min", "scalar", _MEASURED, "P2", False, 10, 90,
+       "设备估算值，非实验室测量；只作趋势参考", review_required=True),
+    _m("running_index", "跑力指数", "score", "score", _MEASURED, "P2", False, 0, 100,
+       "华为跑力指数原值（如 21.9 D 级）；等级只记在备注，不参与计算", review_required=True),
+    _m("heart_rate_spot_bpm", "单次心率测量", "bpm", "scalar", _MEASURED, "P2", False, 30, 220,
+       "设备页面上的单次心率读数；不是静息心率，也不是日均值", review_required=True),
+    _m("spo2_spot_percent", "单次血氧测量", "%", "percent", _MEASURED, "P2", False, 50, 100,
+       "设备页面上的单次血氧读数；不是日均值", review_required=True),
     _m("blood_glucose_mmol_l", "血糖", "mmol/L", "scalar", _MEASURED, "P2", False, 1.0, 40.0,
        "仅在来源与测量方式明确时录入", review_required=True),
     _m("body_temperature_c", "体温", "°C", "scalar", _MEASURED, "P2", False, 30.0, 45.0,

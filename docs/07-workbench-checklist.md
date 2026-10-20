@@ -11,7 +11,7 @@
 
 ```bash
 cd personal-health-agent
-.venv/Scripts/python.exe -m health_agent.cli init      # 首次：建库 + 35 个指标
+.venv/Scripts/python.exe -m health_agent.cli init      # 首次：建库 + 40 个指标
 .venv/Scripts/python.exe -m health_agent.cli serve     # 打开 http://127.0.0.1:8000
 ```
 
@@ -25,7 +25,7 @@ cd personal-health-agent
 |---|---|---|---|---|
 | 1 | Python 3.13 | 运行 | ✅ 已具备（项目 `.venv`，3.13.14） | 装 Python 3.12+ 后 `python -m venv .venv` |
 | 2 | 依赖包 | 运行 | ✅ 已装（`requirements-dev.txt`） | `.venv/Scripts/python.exe -m pip install -r requirements-dev.txt` |
-| 3 | 数据库 | 存数据 | ✅ 自动建（11 表 / 35 指标） | 删 `data/health.db` 后重跑 `init` |
+| 3 | 数据库 | 存数据 | ✅ 自动建（11 表 / 40 指标） | 删 `data/health.db` 后重跑 `init` |
 | 4 | 浏览器 | 看界面 | ✅ Chrome / Edge / 华为浏览器 | 建议 Chromium 105+（表盘用到 `aspect-ratio`、`:focus-visible`） |
 | 5 | 访问密码 | 局域网/平板访问 | ⬜ 可选，本机用不需要 | `.venv/Scripts/python.exe -m health_agent.cli passwd`，把输出写入 `.env` |
 | 6 | 局域网开启 | 平板访问 | ⬜ 默认关闭 | `.env` 加 `HEALTH_AGENT_LAN=1` + 密码，重启 |
@@ -73,7 +73,7 @@ python -m venv .venv
 | 步骤 | 结果 |
 |---|---|
 | 解压产物 | 110 文件 |
-| `cli init` | 建库成功，指标注册表 35 条 |
+| `cli init` | 建库成功，指标注册表 40 条 |
 | `cli import sample_with_issues.csv` | 预览正常 → `--commit` 入库 6 条 pending / 拒绝 4 |
 | `cli backup` | 生成 zip + manifest（sha256） |
 | `cli serve` + 11 个端点 | `/ /sleep /trends /chronos /records /imports /alerts /settings /healthz /export.csv /static/css/tokens.css` **全部 200** |

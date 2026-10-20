@@ -108,3 +108,40 @@ def test_unused_timezone_option_was_removed(tmp_path):
     """0.1.0 里 HEALTH_AGENT_TZ 被读入却从未使用，0.1.1 已删除，避免死配置误导。"""
     settings = load_settings({"HEALTH_AGENT_TZ": "UTC"}, project_root=tmp_path)
     assert not hasattr(settings, "tz")
+
+
+def test_env_file_is_read(tmp_path):
+    """`.env` 是文档承诺的配置入口，必须真的被读取（2026-10-20 修）。"""
+    (tmp_path / ".env").write_text(
+        "# 注释行\n\nHEALTH_AGENT_PORT=8123\nDEEPSEEK_API_KEY=sk-test-only\n",
+        encoding="utf-8",
+    )
+    settings = load_settings({}, project_root=tmp_path)
+
+    assert settings.port == 8123
+    assert settings.ai_enabled
+    assert settings.deepseek_api_key == "sk-test-only"
+
+
+def test_process_env_overrides_env_file(tmp_path):
+    """命令行/系统环境变量优先级高于 .env，方便临时覆盖。"""
+    (tmp_path / ".env").write_text("HEALTH_AGENT_PORT=8123\n", encoding="utf-8")
+
+    settings = load_settings({"HEALTH_AGENT_PORT": "9000"}, project_root=tmp_path)
+
+    assert settings.port == 9000
+
+
+def test_env_file_tolerates_quotes_and_bad_lines(tmp_path):
+    (tmp_path / ".env").write_text(
+        'HEALTH_AGENT_SLEEP_TARGET_MIN="480"\n这不是一个键值行\n', encoding="utf-8"
+    )
+
+    settings = load_settings({}, project_root=tmp_path)
+
+    assert settings.sleep_target_minutes == 480
+
+
+def test_missing_env_file_is_not_an_error(tmp_path):
+    settings = load_settings({}, project_root=tmp_path)  # 目录里没有 .env
+    assert settings.port == 8000
