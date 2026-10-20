@@ -13,6 +13,14 @@
 | T06 | 最终回归与交付检查 | 待审核 | `reports/T06_FINAL_ACCEPTANCE_REPORT.md` | 结论 A（可以交付）；376 passed / 浏览器 14/14 / 打包解压自检 376；含追加要求"模块化 + UI 可美化接口" |
 | 延伸 | 模块化与可美化接口（用户追加） | 待审核 | `docs/06-ui-extension-guide.md` | pages.py 注册表、context.py 视图模型、CSS 四层、base.html 扩展块、16 条守门测试 |
 
+## 发布与工作台状态（2026-10-20 21:40）
+
+- 发布包已按授权重新生成：`dist/personal-health-agent-0.1.2.zip`（343KB / 110 文件 / sha256 `ded193bd…`），
+  源码与解压后自检均 376 passed。
+- 工作台搭建前置与剩余任务清单：`docs/07-workbench-checklist.md`。
+- 实测：解压产物 → `cli init`（37 指标）→ `cli import --commit`（6 pending / 拒绝 4）→ `cli backup` →
+  `cli serve` 11 个端点全 200。
+
 ## 状态更新规则
 - Work Buddy 完成一个任务后只能标记“待审核”，不能自行标记“已批准”。
 - 用户/ChatGPT审核通过后，才把该任务标记为“已批准”。

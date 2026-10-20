@@ -245,3 +245,20 @@
 - **未验证项目**：真实 Android 平板、Safari/Firefox、屏幕阅读器、真实截图全链路、真实 DeepSeek 接口
 - **剩余风险**：R1 样式拆 5 文件多 4 个请求（本地回环）；R2 @import 串行加载；R3 直接改 app.css 会绕过分层（有测试拦）；R4 dist/ 落后于代码，需授权后重新打包
 - **状态**：T06 待审核，结论 **A（可以交付）**
+
+---
+
+### 2026-10-20 — 交付：重新打包 + 工作台前置清单（按用户授权执行）
+
+- **触发**：用户"确认还有哪些任务，以及还需要哪些前置才能搭建工作台。给予授权"。
+- **执行**：
+  - `python scripts/package.py` → `dist/personal-health-agent-0.1.2.zip` 343KB / 110 文件 / 17,482 行，
+    sha256 `ded193bd7e9442f9feb01419d0c04a87f542d82417338e6b667ebf01ef21a6b9`；
+    源码测试 376 passed，**解压自检 376 passed**
+  - 解压产物到系统临时目录实测搭建链路：`cli init`（37 指标）→ `cli import`（预览 → --commit 入库 6 条 pending、拒绝 4）
+    → `cli backup`（zip + manifest）→ `cli serve`：`/ /sleep /trends /chronos /records /imports /alerts /settings /healthz /export.csv /static/css/tokens.css` 全部 200
+- **新增文件**：`docs/07-workbench-checklist.md`（前置条件 10 项含现状、真实数据字段格式、产物试用步骤、5 分钟验收清单、剩余任务分类）
+- **修改文件**：`TASK_STATUS.md`（发布与工作台状态）、`docs/02-runbook.md`（顶部指向清单）
+- **测试结果**：376 passed ×2（源码 + 解压）；未改任何业务代码
+- **未验证**：依赖全新安装路径（复用现有 venv，未重装依赖）；平板真机；真实截图数据
+- **状态**：T06 仍待审核；发布包已更新
