@@ -1,9 +1,9 @@
-# 交接说明（HANDOFF）· v0.1.2 + T04/T05（2026-10-20 晚更新）
+# 交接说明（HANDOFF）· v0.1.2 + T04/T05/T06（2026-10-20 晚更新）
 
 > 给接手的人或 AI：读完这一份，就能知道**现在在哪、为什么这么做、下一步做什么**。
 > 更细的设计取舍见 `docs/00-architecture-plan-v1.md` 的 §15 修订记录（V1.1–V1.5）。
-> 任务包门禁进度见 `TASK_STATUS.md`：T00–T04 已批准，**T05 已实现、待审核**
-> （`reports/T05_CHRONOS_UI_REPORT.md`），T06 未开始。
+> 任务包门禁进度见 `TASK_STATUS.md`：T00–T05 已批准，**T06 待审核**（结论 A，`reports/T06_FINAL_ACCEPTANCE_REPORT.md`）。
+> **UI 要改版/加功能，先读 `docs/06-ui-extension-guide.md`**。
 
 ---
 
@@ -11,8 +11,10 @@
 
 本地优先的个人健康数据工具，**P0 功能（任务 0–7）全部完成并有测试**；
 0.1.2 完成 UI 设计系统首轮落地；T04 落了 Simple 模式六页（参照范围行、五桶重排、阈值只读表等）；
-T05 把时钟模式从 Demo 升级为零 JS 两步环形导航（选择→预览→进入、键盘方向键、减少动态降级）。
-测试 **360 passed**，浏览器交互验证 14/14。**没有接真实设备数据，也没有接真实 AI 接口。**
+T05 把时钟模式从 Demo 升级为零 JS 两步环形导航；T06 完成最终验收（结论 A）并做模块化重构：
+页面注册表 `ui/pages.py`、视图模型 `ui/context.py`、样式四层 `static/css/`。
+测试 **376 passed**，浏览器交互验证 14/14，打包解压自检 376 passed。
+**没有接真实设备数据，也没有接真实 AI 接口。**
 
 ---
 
@@ -50,8 +52,12 @@ T05 把时钟模式从 Demo 升级为零 JS 两步环形导航（选择→预览
 
 ```
 ui/          FastAPI + Jinja2 服务端渲染；只做展示与表单转发
-  app.py     create_app 工厂、鉴权/CSRF 中间件、全部路由
+  app.py     create_app 工厂、鉴权/CSRF 中间件、全部路由（不写展示字符串）
+  pages.py   页面注册表：导航/链接网格/表盘扇区的唯一事实源（加页面改这里）
+  context.py 视图模型（Tile/Reference/Sector）与装配：模板字段契约集中一处
   charts.py  纯几何：把序列变成 SVG 坐标（唯一"画图"的地方）
+  templates/ Jinja2；base.html 有 styles/head/scripts/nav_extra/body_class 扩展块
+  static/    app.css 只是 @import 入口；css/{tokens,base,components,pages}.css 四层
 reports/     日报周报；每个数字带 record_ids 或 derived_from+window
 analytics/   窗口聚合、基线、质量；只读 confirmed
 rules/       提醒规则 + 去重冷却

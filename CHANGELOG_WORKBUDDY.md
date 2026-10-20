@@ -206,3 +206,42 @@
 - **未验证项目**：真实 Android 平板（华为浏览器）触控与横竖屏、Safari/Firefox 渲染、屏幕阅读器播报、强制颜色模式
 - **剩余风险**：R1 低端平板旋转掉帧；R2 `overflow:hidden` 裁掉悬停外缘 3px；R3 第 6 扇区切换可能"绕远路"
 - **状态**：待审核（通过后进 T06 最终回归）
+
+---
+
+### 2026-10-20 — T06 — 最终回归与交付验收（结论 A）+ 模块化重构
+
+- **修改文件**：
+  - `ui/app.py`：移除 4 个内联装配函数（`_metric_labels/_reference/_dashboard_tiles/_chronos_sectors`，约 −130 行），改为引用 `ui/context.py`；`render()` 统一注入 `nav_groups/link_pages/dial_pages`
+  - `ui/templates/base.html`：导航改为遍历注册表；新增 `styles/head/scripts/nav_extra/body_class` 扩展块；样式入口保持 `/static/app.css`
+  - `ui/templates/chronos.html`：「普通入口」改遍历 `link_pages`
+  - `ui/static/app.css`：改为 4 行 `@import` 入口
+  - `tests/conftest.py`：新增 `read_css()`（读五层样式）
+  - `tests/test_t04_simple_ui.py`、`tests/test_t05_chronos.py`：CSS 断言改读分层（断言内容不变）
+  - `scripts/package.py`：删除两处重复代码块（self_check 导入探针、bundle 落盘）
+  - `TASK_STATUS.md`、`docs/05-handoff.md`：状态与交接同步
+- **新增文件**：
+  - `ui/pages.py`（页面注册表：导航/链接网格/表盘唯一事实源）
+  - `ui/context.py`（视图模型 Tile/Reference/Sector + 装配函数）
+  - `ui/static/css/{tokens,base,components,pages}.css`（样式四层）
+  - `docs/06-ui-extension-guide.md`（换肤/加组件/加页面/加指标/加规则/开 JS 手册）
+  - `tests/test_ui_modularity.py`（16 条结构守门）
+  - `reports/T06_FINAL_ACCEPTANCE_REPORT.md`
+- **删除文件**：无
+- **执行命令**：
+  - `.venv/Scripts/python.exe -m pytest` → **376 passed, 1 warning, EXIT=0**（295 基线 +81，无跳过/删除）
+  - `.venv/Scripts/python.exe -m pytest --collect-only -q` → 逐文件条数（23 个文件）
+  - `NODE_PATH=… node scripts/verify_t05_browser.js` → **14/14 passed**（CSS 分层后复跑）
+  - `python scripts/package.py --out <系统临时目录>` → 110 文件 / 343KB；源码 376 passed；**解压自检 376 passed**
+  - 浏览器 CSS 加载检查：`/static/app.css` + 4 个分层文件全部 200；`--primary=#0F3D5C`、侧栏 240px、卡片圆角 12px 生效
+  - 密钥扫描 `grep -rn "sk-[A-Za-z0-9]{10,}" src/ tests/ docs/` → 无输出
+  - `git ls-files | grep -cE "\.db$|\.env$|node_modules|^data/"` → 0
+- **测试结果**：总数 376 / 通过 376 / 失败 0 / 跳过 0 / 警告 1（第三方）/ 退出码 0
+- **代码证据**：
+  - 页面清单唯一：`ui/pages.py::PAGES`；`test_base_template_loops_registry_instead_of_hardcoding` 禁止模板写死 href
+  - 样式分层：`test_app_css_is_entry_only`（入口只允许 @import）、`test_tokens_layer_has_no_rules_beyond_root`
+  - 扩展点：`test_base_template_keeps_extension_blocks`（styles/head/scripts/nav_extra/body_class）
+  - 零 JS 基线：`test_templates_do_not_contain_inline_scripts`
+- **未验证项目**：真实 Android 平板、Safari/Firefox、屏幕阅读器、真实截图全链路、真实 DeepSeek 接口
+- **剩余风险**：R1 样式拆 5 文件多 4 个请求（本地回环）；R2 @import 串行加载；R3 直接改 app.css 会绕过分层（有测试拦）；R4 dist/ 落后于代码，需授权后重新打包
+- **状态**：T06 待审核，结论 **A（可以交付）**

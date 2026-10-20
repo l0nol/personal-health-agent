@@ -1,0 +1,127 @@
+/* ============================================================
+   pages.css — 页面层：只放某一张页面自己的样式（当前：时钟模式表盘）。
+   新页面如果只是复用现有组件，不需要在这里加任何东西。
+   ============================================================ */
+
+/* ---------------- 时钟模式（T05）：零 JS 单选表盘 ----------------
+   交互：radio + label，点扇区只预览，点「进入」才跳转。
+   方向键切换选中；表盘按选中扇区旋转到 12 点方向，标签反向转回保持正立。
+   prefers-reduced-motion: no-preference 才启用过渡，减少动态时直接切换。 */
+.chronos { display: grid; grid-template-columns: minmax(0, 440px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.dial { position: relative; width: 100%; aspect-ratio: 1; --dial-r: clamp(104px, 28vw, 148px);
+  /* 环形导航整块旋转时方框的角会扫出容器（120° 时包围盒约 1.37 倍），
+     裁掉才不会把页面撑出横向滚动；扇区半径 ≤148+34px，仍在裁切范围内 */
+  overflow: hidden; }
+.dial-face {
+  position: absolute; inset: 6%;
+  border-radius: 50%; background: var(--surface);
+  border: 1px solid var(--line); box-shadow: var(--shadow-1);
+}
+.dial-face::after {
+  content: ""; position: absolute; inset: 16%;
+  border-radius: 50%; border: 1px dashed var(--line);
+}
+
+/* 隐藏的原生 radio：与对应扇区同位置，供键盘聚焦与选中态；
+   不接收指针（点击全部交给 label），焦点环画在会随环旋转的 label 上，
+   否则旋转后焦点环会出现在别的扇区位置 */
+.sector-input {
+  position: absolute; left: 50%; top: 50%; width: 68px; height: 68px; margin: -34px;
+  appearance: none; -webkit-appearance: none; opacity: 0;
+  background: transparent; border: 0; border-radius: 50%; padding: 0;
+  pointer-events: none;
+  transform: rotate(calc(var(--i) * 60deg)) translateY(calc(-1 * var(--dial-r))) rotate(calc(var(--i) * -60deg));
+}
+#sector-sleep:focus-visible ~ .dial-ring label[for="sector-sleep"],
+#sector-trends:focus-visible ~ .dial-ring label[for="sector-trends"],
+#sector-imports:focus-visible ~ .dial-ring label[for="sector-imports"],
+#sector-alerts:focus-visible ~ .dial-ring label[for="sector-alerts"],
+#sector-reports:focus-visible ~ .dial-ring label[for="sector-reports"],
+#sector-settings:focus-visible ~ .dial-ring label[for="sector-settings"] {
+  box-shadow: var(--focus-ring);
+}
+
+.dial-ring { position: absolute; inset: 0; }
+.sector {
+  position: absolute; left: 50%; top: 50%; width: 68px; height: 68px;
+  margin: -34px; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer; user-select: none;
+  background: var(--surface); border: 1px solid var(--line-strong);
+  color: var(--primary-strong); font-size: 13px;
+  transform: rotate(calc(var(--i) * 60deg)) translateY(calc(-1 * var(--dial-r))) rotate(calc(var(--i) * -60deg));
+}
+.sector span { display: inline-block; }
+.sector:hover { border-color: var(--accent); color: var(--accent-strong); }
+
+/* 选中扇区高亮：每个 label 只能由自己的 radio 点亮（无 :has 依赖，逐个写） */
+#sector-sleep:checked ~ .dial-ring label[for="sector-sleep"],
+#sector-trends:checked ~ .dial-ring label[for="sector-trends"],
+#sector-imports:checked ~ .dial-ring label[for="sector-imports"],
+#sector-alerts:checked ~ .dial-ring label[for="sector-alerts"],
+#sector-reports:checked ~ .dial-ring label[for="sector-reports"],
+#sector-settings:checked ~ .dial-ring label[for="sector-settings"] {
+  border-color: var(--primary); background: var(--primary-soft);
+  color: var(--primary-strong); font-weight: 500;
+}
+
+/* 选中扇区转到 12 点方向 */
+#sector-sleep:checked ~ .dial-ring { transform: rotate(0deg); }
+#sector-trends:checked ~ .dial-ring { transform: rotate(-60deg); }
+#sector-imports:checked ~ .dial-ring { transform: rotate(-120deg); }
+#sector-alerts:checked ~ .dial-ring { transform: rotate(-180deg); }
+#sector-reports:checked ~ .dial-ring { transform: rotate(-240deg); }
+#sector-settings:checked ~ .dial-ring { transform: rotate(-300deg); }
+
+/* 环在转，标签要反向转回来才不会倒着看 */
+#sector-trends:checked ~ .dial-ring .sector span { transform: rotate(60deg); }
+#sector-imports:checked ~ .dial-ring .sector span { transform: rotate(120deg); }
+#sector-alerts:checked ~ .dial-ring .sector span { transform: rotate(180deg); }
+#sector-reports:checked ~ .dial-ring .sector span { transform: rotate(240deg); }
+#sector-settings:checked ~ .dial-ring .sector span { transform: rotate(300deg); }
+
+/* 中心区域：只显示选中扇区的预览与「进入」 */
+.dial-core {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 58%; max-width: 250px; text-align: center;
+}
+.core-date { font-size: 12px; color: var(--text-3); margin-bottom: 8px; }
+.core-panel, .core-enter { display: none; }
+.core-kicker { font-size: 11px; color: var(--text-3); margin: 0 0 2px; }
+.core-value {
+  font-size: 22px; line-height: 1.25; font-weight: 500; color: var(--text);
+  margin: 0 0 2px; font-variant-numeric: tabular-nums;
+}
+.core-sub { font-size: 11px; color: var(--text-3); margin: 0 0 8px; }
+.core-enter {
+  width: fit-content; margin: 8px auto 0; min-height: 44px; line-height: 44px;
+  padding: 0 14px; border-radius: var(--r-control);
+  background: var(--primary); color: #fff; font-size: 13px;
+}
+.core-enter:hover { background: var(--primary-strong); color: #fff; text-decoration: none; }
+.core-note { font-size: 12px; color: var(--text-3); margin-top: 10px; }
+
+#sector-sleep:checked ~ .dial-core [data-sector="sleep"],
+#sector-trends:checked ~ .dial-core [data-sector="trends"],
+#sector-imports:checked ~ .dial-core [data-sector="imports"],
+#sector-alerts:checked ~ .dial-core [data-sector="alerts"],
+#sector-reports:checked ~ .dial-core [data-sector="reports"],
+#sector-settings:checked ~ .dial-core [data-sector="settings"] { display: block; }
+
+.dial-hint { margin: 12px 0 0; font-size: 12px; color: var(--text-3); line-height: 1.6; }
+.chronos-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+
+@media (max-width: 1279px) {
+  .chronos { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 767px) {
+  .chronos-tiles { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* 只有系统允许动效时才给表盘旋转与悬停位移；减少动态时一律瞬时切换 */
+  .dial-ring { transition: transform .45s ease; }
+  .sector span { transition: transform .45s ease; }
+  .sector { transition: border-color .18s ease, background-color .18s ease; }
+  .sector:hover { transform: rotate(calc(var(--i) * 60deg)) translateY(calc(-1 * var(--dial-r) - 3px)) rotate(calc(var(--i) * -60deg)); }
+}

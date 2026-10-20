@@ -406,22 +406,6 @@ def self_check(archive: Path) -> dict:
         if str(root) not in imported_from:
             raise RuntimeError(f"自检导入了错误的源码：{imported_from}")
 
-        # 先确认 pytest 真的会导入"解压后"的源码，而不是本地 editable 安装的那份
-        probe = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "import sys; sys.path.insert(0, 'src'); import health_agent; print(health_agent.__file__)",
-            ],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        imported_from = probe.stdout.strip()
-        if str(root) not in imported_from:
-            raise RuntimeError(f"自检导入了错误的源码：{imported_from}")
-
         completed = subprocess.run(
             [sys.executable, "-m", "pytest"],
             cwd=root,
@@ -563,12 +547,6 @@ def main(argv: list[str] | None = None) -> int:
         shutil.rmtree(out_dir)
     target = out_dir / f"{PRODUCT}-{VERSION}"
     write_distribution(target, files, manifest)
-
-    bundle = out_dir / f"{PRODUCT}-{VERSION}.bundle.md"
-    bundle.write_text(build_bundle(files, manifest), encoding="utf-8")
-    (out_dir / "VERIFY-PROMPT.md").write_text(
-        render_template(VERIFY_PROMPT, manifest), encoding="utf-8"
-    )
 
     bundle = out_dir / f"{PRODUCT}-{VERSION}.bundle.md"
     bundle.write_text(build_bundle(files, manifest), encoding="utf-8")

@@ -4,33 +4,32 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}健康记录{% endblock %} · Personal Health Agent</title>
+
+  {# ---- 美化入口（一）：样式 ----
+     app.css 只是入口，真正的 token/布局/组件/页面样式在 static/css/ 下分文件。
+     想整体换肤改 css/tokens.css；想改组件外观改 css/components.css；
+     想给单个页面加样式改 css/pages.css。也可以在这里追加你自己的样式表。 #}
+  {% block styles %}
   <link rel="stylesheet" href="/static/app.css">
+  {% endblock %}
+
+  {# ---- 美化入口（二）：自定义 head（字体、图标、主题色 meta 等） #}
+  {% block head %}{% endblock %}
 </head>
-<body class="mode-{{ mode|default('simple') }}">
+<body class="mode-{{ mode|default('simple') }} {% block body_class %}{% endblock %}">
 {% from "_macros.html" import navlink, banner %}
 
 <div class="app">
   <aside class="sidebar">
     <a class="brand" href="/">Personal Health Agent</a>
 
+    {# ---- 扩展入口（三）：导航来自 ui/pages.py，新增页面只需在那里加一条 ---- #}
     <nav class="nav">
-      <p class="nav-group">总览</p>
-      {{ navlink('/', '首页', active) }}
-
-      <p class="nav-group">分析</p>
-      {{ navlink('/sleep', '睡眠分析', active) }}
-      {{ navlink('/trends', '指标趋势', active) }}
-      {{ navlink('/reports', '报告', active) }}
-
-      <p class="nav-group">数据</p>
-      {{ navlink('/records', '记录', active) }}
-      {{ navlink('/imports', '导入', active) }}
-      {{ navlink('/conflicts', '冲突', active) }}
-
-      <p class="nav-group">其他</p>
-      {{ navlink('/alerts', '提醒', active) }}
-      {{ navlink('/settings', '设置与隐私', active) }}
-      {{ navlink('/chronos', '时钟模式', active) }}
+      {% for group, items in nav_groups %}
+      <p class="nav-group">{{ group }}</p>
+      {% for page in items %}{{ navlink(page.href, page.label, active) }}{% endfor %}
+      {% endfor %}
+      {% block nav_extra %}{% endblock %}
     </nav>
 
     <div class="sidebar-foot">
@@ -43,13 +42,18 @@
   </aside>
 
   <main class="content">
-    {{ banner('ok', msg) }}
-    {{ banner('bad', error) }}
+    {% block page_banner %}{{ banner('ok', msg) }}{{ banner('bad', error) }}{% endblock %}
     {% block content %}{% endblock %}
     <footer class="foot">
       <p>数据只保存在本机。本工具用于趋势观察与生活习惯参考，不构成诊断或治疗建议。</p>
     </footer>
   </main>
 </div>
+
+{# ---- 扩展入口（四）：脚本 ----
+   项目默认零 JS。要加交互时只在这里写 <script>，并且：
+   1) 先确认没有它页面仍可用（渐进增强）；2) 尊重 prefers-reduced-motion；
+   3) 不要在 GET 渲染里发起写操作。 #}
+{% block scripts %}{% endblock %}
 </body>
 </html>

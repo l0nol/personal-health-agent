@@ -1,0 +1,37 @@
+/* ============================================================
+   tokens.css — 设计 token（换肤第一入口）
+   只放变量：颜色、字号、圆角、阴影、布局尺寸。
+   改这里的值即可整体换肤；不要在别处硬编码颜色。
+   ============================================================ */
+
+:root {
+  --bg: #F4F7F9;
+  --surface: #FFFFFF;
+  --surface-2: #EDF2F6;
+  --line: #DCE5EB;
+  --line-strong: #C3D2DC;
+
+  --text: #0E1F2A;
+  --text-2: #4C6473;
+  --text-3: #7C93A1;
+
+  --primary: #0F3D5C;
+  --primary-strong: #0A2C44;
+  --primary-soft: #E3EEF6;
+  --accent: #0E8C7F;
+  --accent-strong: #0A6E63;
+  --accent-soft: #E0F2EF;
+  --warn: #A9660A;
+  --warn-soft: #FBF0DC;
+  --danger: #A32D2D;
+  --danger-soft: #FBEAEA;
+
+  --r-card: 12px;
+  --r-control: 8px;
+  --shadow-1: 0 1px 2px rgba(14, 31, 42, .06);
+  --shadow-2: 0 8px 24px rgba(14, 31, 42, .10);
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--primary);
+  --sidebar-w: 240px;
+  --font: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+

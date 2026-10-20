@@ -71,9 +71,7 @@
   <h2>普通入口</h2>
   <p class="note">表盘只是另一种排版；不使用表盘也能到达所有页面（键盘 Tab 同样可用）。</p>
   <div class="link-grid">
-    <a href="/">首页</a><a href="/sleep">睡眠分析</a><a href="/trends">指标趋势</a>
-    <a href="/reports">报告</a><a href="/records">记录</a><a href="/imports">导入</a>
-    <a href="/conflicts">冲突</a><a href="/alerts">提醒</a><a href="/settings">设置与隐私</a>
+    {% for page in link_pages %}<a href="{{ page.href }}">{{ page.label }}</a>{% endfor %}
   </div>
 </section>
 

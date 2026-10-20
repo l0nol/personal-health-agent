@@ -24,9 +24,8 @@ from health_agent.storage.lifecycle import confirm_record
 from health_agent.storage.repository import insert_record, seed_catalog
 from health_agent.ui.app import create_app
 
-from conftest import make_record
+from conftest import make_record, read_css
 
-APP_CSS = Path(__file__).resolve().parents[1] / "src" / "health_agent" / "ui" / "static" / "app.css"
 
 
 def _client(tmp_path) -> TestClient:
@@ -341,7 +340,7 @@ def test_settings_points_to_backup_runbook(tmp_path):
 # ---------------- 触控与焦点（CSS 静态断言） ----------------
 
 def test_touch_targets_and_focus_ring_in_css():
-    css = APP_CSS.read_text(encoding="utf-8")
+    css = read_css()
 
     assert "--focus-ring:" in css
     assert ":focus-visible" in css
@@ -355,7 +354,7 @@ def test_touch_targets_and_focus_ring_in_css():
 
 def test_reference_row_css_exists():
     """参照范围行的样式存在，且不足态用警告色、active 态不用红绿。"""
-    css = APP_CSS.read_text(encoding="utf-8")
+    css = read_css()
 
     assert ".ref-row {" in css
     assert ".ref-row.is-insufficient" in css

@@ -25,9 +25,8 @@ from health_agent.storage.repository import insert_record, seed_catalog
 from health_agent.ui.app import create_app
 from health_agent.ui.auth import hash_password
 
-from conftest import make_record
+from conftest import make_record, read_css
 
-APP_CSS = Path(__file__).resolve().parents[1] / "src" / "health_agent" / "ui" / "static" / "app.css"
 SECTOR_PAGES = ["/sleep", "/trends", "/imports", "/alerts", "/reports", "/settings"]
 
 
@@ -190,7 +189,7 @@ def test_mode_switch_home_uses_same_dial_and_values(tmp_path):
 # ---------------- 降级、性能与安全 ----------------
 
 def test_reduced_motion_only_animates_when_allowed():
-    css = APP_CSS.read_text(encoding="utf-8")
+    css = read_css()
 
     block = re.search(
         r"@media \(prefers-reduced-motion: no-preference\) \{(.*?)\n\}", css, re.S
@@ -202,7 +201,7 @@ def test_reduced_motion_only_animates_when_allowed():
 
 
 def test_all_six_checked_states_have_css_rules():
-    css = APP_CSS.read_text(encoding="utf-8")
+    css = read_css()
 
     for key in ("sleep", "trends", "imports", "alerts", "reports", "settings"):
         assert f'#sector-{key}:checked ~ .dial-ring {{ transform: rotate' in css, key

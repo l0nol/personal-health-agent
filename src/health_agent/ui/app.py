@@ -21,24 +21,25 @@ from fastapi.templating import Jinja2Templates
 from .. import __version__
 from ..ai_client.summarizer import SOURCE_TEMPLATE, Narrative, peek_cached, rewrite_report
 from ..analytics.aggregate import load_points, range_days, summarize, weekly_buckets
-from ..analytics.baseline import compute_baseline
 from ..analytics.quality import summarize_quality
 from ..catalog import METRICS, RANGE_BOUND_METRICS, get_metric
 from ..config import Settings, load_settings
 from ..ingestion.batch import commit_import
 from ..ingestion.loader import LoadError, file_sha256, load_rows
 from ..ingestion.preview import build_preview, render_text
-from ..storage import lifecycle, preferences, repository
-from ..storage.db import connect, current_version, init_db
 from ..reports.builder import build_daily, build_weekly, latest_data_date
 from ..reports.format import format_number
 from ..rules.engine import config_from_settings, describe_sleep_target, run as run_rules
-from .charts import BandPoint, SeriesPoint, build_band, build_bars, build_line
-
-METRICS_BY_NAME = {metric.name: metric for metric in METRICS}
 from ..storage import alerts as alert_store
+from ..storage import lifecycle, preferences, repository
+from ..storage.db import connect, current_version, init_db
 from ..storage.exporting import delete_record, export_csv, export_json
 from .auth import SESSION_COOKIE, SessionSigner, load_secret, verify_password
+from .charts import BandPoint, SeriesPoint, build_band, build_bars, build_line
+from .context import chronos_sectors, dashboard_tiles, metric_labels, reference
+from .pages import DIAL_PAGES, link_grid_pages, nav_groups
+
+METRICS_BY_NAME = {metric.name: metric for metric in METRICS}
 
 BASE_DIR = Path(__file__).resolve().parent
 ALLOWED_SUFFIXES = {".json", ".csv", ".tsv"}
@@ -59,10 +60,6 @@ def _safe_next(target: str) -> str:
         return "/"
     return target
 
-def _metric_labels() -> dict[str, str]:
-    return {metric.name: metric.display for metric in METRICS}
-
-
 def _items(rows) -> list[dict]:
     """把 sqlite Row 转成模板友好的 dict，并把 quality_flags 解析成列表。"""
     items = []
@@ -74,110 +71,6 @@ def _items(rows) -> list[dict]:
             item["flags"] = []
         items.append(item)
     return items
-
-
-def _reference(conn, metric_name: str, end: date) -> dict:
-    """指标卡"参照范围"行的数据：个人基线动态计算。
-
-    规则（T03 设计契约，用户 2026-10-20 裁决）：
-    - 基线可用 → 中位数 ± mad_factor×离散度构成的个人区间；
-    - 样本不足 / 离散度为 0 → 只说"数据不足"并给出原因，绝不拿默认值冒充个性化；
-    - 没有任何记录 → "暂无数据"；
-    - 区间端点指标（range_bound）→ 不显示参照范围。
-
-    这里只做数据装配，判断全在 analytics.baseline；格式化交给模板的 human 过滤器。
-    """
-    if get_metric(metric_name).kind == "range_bound":
-        return {"state": "range_bound", "unit": get_metric(metric_name).unit, "metric": metric_name}
-
-    baseline = compute_baseline(conn, metric_name, end)
-    unit = get_metric(metric_name).unit
-    if baseline.status != "active":
-        state = "no_data" if baseline.sample_count == 0 else "insufficient"
-        return {
-            "state": state,
-            "reason": baseline.reason,
-            "sample_count": baseline.sample_count,
-            "min_samples": baseline.min_samples,
-            "unit": unit,
-            "metric": metric_name,
-        }
-    return {
-        "state": "active",
-        "low": baseline.center - baseline.threshold,
-        "high": baseline.center + baseline.threshold,
-        "center": baseline.center,
-        "threshold": baseline.threshold,
-        "method": baseline.method,
-        "mad_factor": baseline.mad_factor,
-        "window_start": baseline.window_start,
-        "window_end": baseline.window_end,
-        "window_days": baseline.window_days,
-        "sample_count": baseline.sample_count,
-        "unit": unit,
-        "metric": metric_name,
-    }
-
-
-def _dashboard_tiles(conn, end: date) -> list[dict]:
-    """首页与时钟模式共用的指标卡数据（同一来源、同一窗口、同一格式化）。
-
-    T05 铁律"表盘中心只显示与简洁模式相同的数值"靠这一个函数保证：
-    两处路由都调它，不做第二套口径；要改口径只改这里。
-    """
-    start = end - timedelta(days=6)
-    tiles = []
-    for name, href in (
-        ("night_sleep_minutes", "/sleep"),
-        ("resting_hr_bpm", "/trends?metric=resting_hr_bpm"),
-        ("steps_count", "/trends?metric=steps_count"),
-        ("activity_energy_kcal", "/trends?metric=activity_energy_kcal"),
-    ):
-        metric_summary = summarize(conn, name, start, end)
-        latest_point = metric_summary.points[-1] if metric_summary.points else None
-        tiles.append(
-            {
-                "metric": name,
-                "label": get_metric(name).display,
-                "value": latest_point.value if latest_point else None,
-                "date": latest_point.record_date if latest_point else None,
-                "unit": get_metric(name).unit,
-                "days": metric_summary.sample_days,
-                "status": metric_summary.status,
-                "href": href,
-                "reference": _reference(conn, name, end),
-            }
-        )
-    return tiles
-
-
-def _chronos_sectors(tiles, counts, conflicts, unread, end: date) -> list[dict]:
-    """表盘六扇区：预览值全部取自 _dashboard_tiles / 计数，不新算任何数。"""
-    sleep, hr = tiles[0], tiles[1]
-
-    def foot(tile) -> str:
-        return f"近 7 天有效 {tile['days']}/7 天" if tile["days"] else "近 7 天无数据"
-
-    return [
-        {"key": "sleep", "idx": 0, "label": "睡眠", "href": "/sleep",
-         "kicker": "昨夜睡眠", "sub": foot(sleep),
-         "value_text": format_number(sleep["value"], sleep["unit"], sleep["metric"])},
-        {"key": "trends", "idx": 1, "label": "趋势", "href": "/trends",
-         "kicker": "静息心率", "sub": foot(hr),
-         "value_text": format_number(hr["value"], hr["unit"], hr["metric"])},
-        {"key": "imports", "idx": 2, "label": "导入", "href": "/imports",
-         "kicker": "待确认记录", "sub": "写入后仍需逐条确认",
-         "value_text": f"{counts['pending']} 条"},
-        {"key": "alerts", "idx": 3, "label": "提醒", "href": "/alerts",
-         "kicker": "未读提醒", "sub": "同一窗口不重复 · 冷却 72 小时",
-         "value_text": f"{unread} 条"},
-        {"key": "reports", "idx": 4, "label": "报告", "href": "/reports",
-         "kicker": "已确认记录", "sub": f"数据截至 {end.isoformat()}",
-         "value_text": f"{counts['confirmed']} 条"},
-        {"key": "settings", "idx": 5, "label": "设置", "href": "/settings",
-         "kicker": "界面模式", "sub": "数据只在本机存储",
-         "value_text": "时钟"},
-    ]
 
 
 def create_app(settings: Settings | None = None, *, db_path: Path | None = None) -> FastAPI:
@@ -220,12 +113,16 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
         return str(preferences.get_settings(conn).get("ui_mode") or "simple")
 
     def render(request: Request, name: str, **context):
+        # 所有页面共享的上下文（导航清单来自 ui/pages.py，模板不再硬编码链接）
         context.setdefault("csrf", getattr(request.state, "csrf", ""))
         context.setdefault("active", request.url.path)
         context.setdefault("msg", request.query_params.get("msg"))
         context.setdefault("error", request.query_params.get("error"))
-        context.setdefault("labels", _metric_labels())
+        context.setdefault("labels", metric_labels())
         context.setdefault("show_logout", settings.password_hash is not None)
+        context.setdefault("nav_groups", nav_groups())
+        context.setdefault("link_pages", link_grid_pages())
+        context.setdefault("dial_pages", DIAL_PAGES)
         return templates.TemplateResponse(request, name, context)
 
     def go(url: str) -> RedirectResponse:
@@ -317,7 +214,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
         end = latest_data_date(conn) or date.today()
         start = end - timedelta(days=6)
         config = config_from_settings(settings)
-        tiles = _dashboard_tiles(conn, end)
+        tiles = dashboard_tiles(conn, end)
         sleep_chart = build_bars(_series(conn, "night_sleep_minutes", start, end),
                                  target=float(config.sleep_target_minutes), height=150)
         if mode == "chronos":
@@ -330,7 +227,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
                 conflicts=conflicts,
                 unread_alerts=unread_alerts,
                 tiles=tiles,
-                sectors=_chronos_sectors(tiles, counts, conflicts, unread_alerts, end),
+                sectors=chronos_sectors(tiles, counts, conflicts, unread_alerts, end),
                 end_day=end.isoformat(),
             )
         recent = _items(repository.list_records(conn, limit=10))
@@ -743,7 +640,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             stages=stages,
             rows=[item for item in series if item.value is not None][-14:],
             target_text=describe_sleep_target(config),
-            reference=_reference(conn, "night_sleep_minutes", end),
+            reference=reference(conn, "night_sleep_minutes", end),
             pending=pending,
             end_day=end.isoformat(),
         )
@@ -797,14 +694,14 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             summary=summary,
             is_range=is_range,
             groups=groups,
-            reference=_reference(conn, metric, end),
+            reference=reference(conn, metric, end),
             end_day=end.isoformat(),
         )
 
     @app.get("/chronos", response_class=HTMLResponse)
     def chronos(request: Request, conn=Depends(get_db)):
         end = latest_data_date(conn) or date.today()
-        tiles = _dashboard_tiles(conn, end)
+        tiles = dashboard_tiles(conn, end)
         counts = {
             "pending": repository.count_records(conn, status="pending"),
             "confirmed": repository.count_records(conn, status="confirmed"),
@@ -818,7 +715,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             "chronos.html",
             mode=ui_mode(conn),
             tiles=tiles,
-            sectors=_chronos_sectors(tiles, counts, conflicts, unread, end),
+            sectors=chronos_sectors(tiles, counts, conflicts, unread, end),
             counts=counts,
             conflicts=conflicts,
             unread_alerts=unread,

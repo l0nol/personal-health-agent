@@ -45,3 +45,24 @@ def make_record(**overrides) -> NormalizedRecord:
     )
     base.update(overrides)
     return NormalizedRecord(**base)
+
+
+#: 样式分层顺序（与 static/app.css 的 @import 一致）
+_CSS_FILES = (
+    "tokens.css",
+    "base.css",
+    "components.css",
+    "pages.css",
+)
+
+
+def read_css() -> str:
+    """读取全部样式（入口 app.css + 四个分层文件），供 CSS 静态断言使用。
+
+    app.css 现在只是 @import 入口，具体规则在 static/css/ 下按层拆分；
+    测试统一用本函数，避免"断言写死某个文件路径"。
+    """
+    static = ROOT / "src" / "health_agent" / "ui" / "static"
+    parts = [(static / "app.css").read_text(encoding="utf-8")]
+    parts += [(static / "css" / name).read_text(encoding="utf-8") for name in _CSS_FILES]
+    return "\n".join(parts)
