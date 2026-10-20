@@ -108,3 +108,19 @@
 - **未验证项目**：真实渗透测试、局域网真机、Windows 文件锁下 `os.replace` 失败路径、真实 DeepSeek 接口、恢复时存在并发写
 - **剩余风险**：恢复必须在服务停止时进行（代码报错但不阻止）；备份完整性不防伪造；`resolve_conflict` 仍缺事务回滚（T01 遗留）
 - **状态**：待审核
+
+### 2026-10-20 — 基础设施 — 初始化 Git 仓库（用户授权）
+
+- **修改文件**：`.gitignore`（新增 `dist/` 排除项，发布产物可由 `scripts/package.py` 重新生成）
+- **新增文件**：`.git/`（仓库本体）；首次提交 `060e538`
+- **删除文件**：无
+- **执行命令**：
+  - `git init -b main` → 仓库初始化（此前 `git rev-parse --is-inside-work-tree` 报 not a git repository）
+  - `git add -A` → 暂存 101 个文件
+  - `git ls-files --cached | grep -c -E "\.db$|\.env$|^data/|^dist/|\.png$"` → **0**（敏感文件零泄露）
+  - `git commit` → `[main (root-commit) 060e538] 101 files changed, 16563 insertions(+)`
+- **测试结果**：不涉及（纯版本控制操作，未触碰业务代码）
+- **代码证据**：提交内容 = T02 修复后全量状态（src 54 文件 + tests 23 文件 + docs 9 + reports 3 + 根目录 4 + test_data 2）
+- **未验证项目**：未配置 remote（本地仓库）；未演练后续 `git diff`/回滚工作流
+- **剩余风险**：CRLF 警告（Windows 换行符归一化，git 自动处理，无功能影响）
+- **状态**：已生效（用户 2026-10-20 授权"可以"）
