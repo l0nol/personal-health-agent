@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}健康记录{% endblock %} · Personal Health Agent</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="mode-{{ mode|default('simple') }}">
+{% from "_macros.html" import navlink %}
+
+<div class="app">
+  <aside class="sidebar">
+    <a class="brand" href="/">Personal Health Agent</a>
+
+    <nav class="nav">
+      <p class="nav-group">总览</p>
+      {{ navlink('/', '首页', active) }}
+
+      <p class="nav-group">分析</p>
+      {{ navlink('/sleep', '睡眠分析', active) }}
+      {{ navlink('/trends', '指标趋势', active) }}
+      {{ navlink('/reports', '报告', active) }}
+
+      <p class="nav-group">数据</p>
+      {{ navlink('/records', '记录', active) }}
+      {{ navlink('/imports', '导入', active) }}
+      {{ navlink('/conflicts', '冲突', active) }}
+
+      <p class="nav-group">其他</p>
+      {{ navlink('/alerts', '提醒', active) }}
+      {{ navlink('/settings', '设置与隐私', active) }}
+      {{ navlink('/chronos', '时钟模式', active) }}
+    </nav>
+
+    <div class="sidebar-foot">
+      <a href="/export.csv">导出 CSV</a>
+      <a href="/export.json">JSON</a>
+      {% if show_logout %}
+      <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">退出</button></form>
+      {% endif %}
+    </div>
+  </aside>
+
+  <main class="content">
+    {% if msg %}<p class="banner ok">{{ msg }}</p>{% endif %}
+    {% if error %}<p class="banner bad">{{ error }}</p>{% endif %}
+    {% block content %}{% endblock %}
+    <footer class="foot">
+      <p>数据只保存在本机。本工具用于趋势观察与生活习惯参考，不构成诊断或治疗建议。</p>
+    </footer>
+  </main>
+</div>
+</body>
+</html>

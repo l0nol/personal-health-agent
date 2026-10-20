@@ -1,0 +1,110 @@
+# Work Buddy 变更日志
+
+## 记录模板
+
+### YYYY-MM-DD — Txx — 任务标题
+- 修改文件：
+- 新增文件：
+- 删除文件（必须解释原因，默认不允许）：
+- 执行命令：
+- 测试结果（总数/通过/失败/跳过/警告/退出码）：
+- 代码证据：
+- 未验证项目：
+- 剩余风险：
+- 状态：待审核
+
+---
+
+## 记录
+
+### 2026-10-20 — T00 — 项目基线盘点
+
+- **修改文件**：无（业务代码、数据库结构、依赖、测试均未改动）
+- **新增文件**：
+  - `reports/T00_BASELINE_REPORT.md`（基线盘点报告）
+  - `TASK_STATUS.md`（项目根，此前不存在；按任务包模板建立）
+  - `CHANGELOG_WORKBUDDY.md`（本文件，此前不存在；按任务包模板建立）
+- **删除文件**：无
+- **执行命令**：
+  - `git rev-parse --is-inside-work-tree` → `fatal: not a git repository`（无版本控制）
+  - `.venv/Scripts/python.exe -V` → Python 3.13.14
+  - `.venv/Scripts/python.exe -m pip list` → fastapi 0.148.0 / starlette 1.9.0 / uvicorn 0.54.0 / Jinja2 3.1.6 / httpx 0.28.1 / python-multipart 0.0.32 / pytest 9.1.1
+  - `.venv/Scripts/python.exe -m pytest` → **295 passed, 31 warnings in 19.88s, EXIT=0**
+  - `.venv/Scripts/python.exe -m pytest --collect-only -q`（收集 295 用例）
+  - `grep -h "^def test_" tests/*.py | sort | uniq -d` → 无输出（无同名测试）
+  - `.venv/Scripts/python.exe -m health_agent.cli init --db <临时库>` → 建库成功，`metrics_catalog` 37 条
+  - TestClient 冒烟：12 个路径（10 个页面 + `/healthz` + `/export.csv`）全部返回 200
+  - 11 条静态断言逐条执行（结果见报告 §6）
+  - `sha256sum dist/personal-health-agent-0.1.2.zip` → 与 `.zip.sha256` 一致
+- **测试结果**：总数 295 / 通过 295 / 失败 0 / 跳过 0 / 警告 31 / 退出码 0
+- **代码证据**：
+  - 版本一致：`pyproject.toml:7` 与 `src/health_agent/__init__.py:10` 均为 `0.1.2`
+  - 唯一索引：`storage/migrations/001_init.sql:77-78`（`uq_records_confirmed … WHERE verification_status='confirmed'`）
+  - 只读 confirmed：`analytics/aggregate.py:81`（`load_points`）
+  - 指标目录：`catalog.py` 37 个指标 / 4 个 range_bound / 37 个 provisional
+  - 规则：`rules/engine.py:264`（`ALL_RULES` 4 条）
+  - 年龄适配：`rules/engine.py:67`（`AGE_ADAPTATION_IMPLEMENTED = False`）
+- **已确认问题（仅记录，未修复）**：
+  - I-1 `date` 对象直通 SQLite 参数（`ui/app.py:561` → `analytics/aggregate.py:81`），触发 30 条 Python 3.12+ 弃用警告
+  - I-2 `ui/app.py:21/22`、`:33/34` 两处重复 import
+  - I-3 `README.md` 5 处成对重复行；`dist/.../00-START-HERE.md` 模板数与测试文件数过期
+  - I-4 交付说明 4 条静态断言写法会误报（#3/#8/#10/#11）
+  - I-5 `pytest` 版本两处口径不一致（`requirements-dev.txt` 精确锁 9.1.1 vs `pyproject.toml` `>=8.0`）
+  - I-6 项目无 Git 仓库
+- **未验证项目**：真实华为截图数据、值域与设备字段核对（37 个全 provisional）、平板真机、DeepSeek 真实接口与计费、满态 UI（库内无数据）、`cli backup/restore` 现场实测
+- **剩余风险**：逻辑键仅到日期粒度；无 HTTPS 单密码；AI 费用记 `unavailable`；导入/提醒/设置三页仍为 0.1.1 结构；时钟模式无拖拽
+- **状态**：待审核
+
+### 2026-10-20 — T01 — 数据可靠性检查与必要修复
+
+- **修改文件**：
+  - `src/health_agent/storage/lifecycle.py`（D1 改值重算 dedup_key；D2 修订保留 captured_at；D5 修订事务回滚；D4 撤销批次先清悬空冲突 + 事务回滚）
+  - `src/health_agent/analytics/aggregate.py`（D3 `load_points` 收窄 `str|date`，新增 `_iso_arg()`）
+- **新增文件**：
+  - `tests/test_t01_data_reliability.py`（16 条：8 复现 + 8 守门）
+  - `reports/T01_DATA_RELIABILITY_REPORT.md`
+- **删除文件**：无（仅清理本次测试产生的 4 个 pytest 临时目录）
+- **执行命令**：
+  - `.venv/Scripts/python.exe -m pytest tests/test_t01_data_reliability.py` → 修复前 7 条失败（复现确认）
+  - `.venv/Scripts/python.exe -m pytest --basetemp=<新目录>` → **311 passed, 1 warning, EXIT=0**（修复后）
+  - `validate_row` 实测 5 张截图 19 个观测值 → 0 拒绝
+  - `grep -h "^def test_" tests/*.py | sort | uniq -d` → 无重复测试名
+  - TestClient 冒烟 `/` `/sleep` `/trends` `/reports` `/chronos` → 全部 200
+- **测试结果**：311 passed / 0 failed / 0 skipped / 1 warning / EXIT=0（修复前基线 295 / 31 warnings）
+- **代码证据**：
+  - `lifecycle.py::update_pending_value` 现在重算 `dedup_key`（`storage/keys.py:55` 的键包含 value）
+  - `lifecycle.py::revise_confirmed` 传 `captured_at=row["captured_at"]`，整体 `try/except → rollback`
+  - `lifecycle.py::revoke_batch` 删除 pending 前先 `DELETE FROM conflicts WHERE incoming/ existing IN (待删)` + `audit_log`
+  - `aggregate.py::load_points` 用 `_iso_arg()` 把 `date` 转 ISO 字符串，不再依赖已弃用的默认日期适配器
+- **已确认并修复的缺陷**：D1 dedup_key 不刷新 / D2 丢失 captured_at / D3 date 适配器弃用 / D4 含冲突批次撤销失败（外键）/ D5 修正失败留半截状态
+- **未验证项目**：并发去重原子性、`resolve_conflict` 同类回滚（留 T02）、值域"不误收"（缺华为官方字段说明）、真实截图完整导入链路
+- **剩余风险**：逻辑键仍只到日期粒度（P2 前置）；D5 回滚测试为修复后补写（未在修复前实跑）；无 Git 仓库
+- **状态**：待审核
+
+### 2026-10-20 — T02 — 安全、备份与 AI 回退
+
+- **修改文件**：
+  - `src/health_agent/backup.py`（`_validate_payload` 校验 SQLite magic；`restore_backup` 改为临时文件校验 + 删旧 `-wal`/`-shm` + `os.replace` 原子替换；`_discard` 清理失败不掩盖真实错误）
+  - `src/health_agent/ui/app.py`（`MAX_UPLOAD_BYTES`=10MB，上传超限不落盘；`_safe_next()` 修开放重定向）
+- **新增文件**：
+  - `tests/test_t02_security_backup.py`（13 条：8 复现 + 5 守门）
+  - `reports/T02_SECURITY_BACKUP_AI_REPORT.md`
+- **删除文件**：无（仅清理本次测试产生的 8 个临时目录）
+- **执行命令**：
+  - `.venv/Scripts/python.exe -m pytest tests/test_t02_security_backup.py` → 修复前 8 条失败（复现确认）
+  - `.venv/Scripts/python.exe -m pytest --basetemp=<新目录>` → **324 passed, 2 warnings, EXIT=0**
+  - `grep -rn "sk-[A-Za-z0-9]\{10,\}" src/ scripts/ tests/ .env.example` → 无密钥字面量
+  - `grep -rn arrhythmia src/health_agent/ui/ src/health_agent/rules/` → 无引用
+  - TestClient 实测：`POST /login next=//evil.example` → 修复前 Location `//evil.example`，修复后 `/`
+- **测试结果**：324 passed / 0 failed / 0 skipped / 2 warnings（均为第三方 starlette 弃用提示）/ EXIT=0
+- **代码证据**：
+  - `backup.py:145 _validate_payload()`：magic `SQLite format 3\0` 不符即拒，坏包不落盘
+  - `backup.py:220`：替换前删除 `health.db-wal` / `health.db-shm`
+  - `backup.py:224`：`os.replace(staged, db_path)` 原子替换
+  - `ui/app.py:52 _safe_next()`：只放行 `/` 开头、非 `//`、不含 `\` 的路径
+  - `ui/app.py:358`：`await file.read(MAX_UPLOAD_BYTES + 1)` 判超限
+- **已确认并修复**：S1 开放重定向（中）/ S2 上传无上限（低-中）/ S3 恢复失败毁库（高）/ S4 陈旧 WAL 污染恢复结果（高）
+- **静态审查风险（未修，仅记录）**：`deepseek_base_url` 未强制 https；manifest 同包自哈希（防意外不防伪造）；`chmod 0o600` 在 Windows 无效；`.bak` 与暂存文件名秒级碰撞；`config.py` 参数校验块重复；撤销失败回显 SQLite 原文
+- **未验证项目**：真实渗透测试、局域网真机、Windows 文件锁下 `os.replace` 失败路径、真实 DeepSeek 接口、恢复时存在并发写
+- **剩余风险**：恢复必须在服务停止时进行（代码报错但不阻止）；备份完整性不防伪造；`resolve_conflict` 仍缺事务回滚（T01 遗留）
+- **状态**：待审核

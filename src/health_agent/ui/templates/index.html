@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "_macros.html" import chart as render_chart, record_tag %}
+{% block title %}今日摘要{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>今日摘要</h1>
+    <p class="sub">{{ end_day }} · 记录总数 {{ total_records }} 条 · 已确认 {{ counts.confirmed }} 条</p>
+  </div>
+  <a class="btn primary" href="/imports">导入数据</a>
+</header>
+
+<section class="tiles">
+  {% for tile in tiles %}
+  <a class="tile" href="{{ tile.href }}">
+    <span class="tile-label">
+      {{ tile.label }}
+      <span class="dot {{ 'ok' if tile.status == 'ok' else ('warn' if tile.status == 'insufficient' else 'none') }}"></span>
+    </span>
+    <span class="tile-value">{{ tile.value|human(tile.unit, tile.metric) }}</span>
+    <span class="tile-foot">
+      {% if tile.days %}近 7 天有效 {{ tile.days }}/7 天{% else %}近 7 天无数据{% endif %}
+    </span>
+  </a>
+  {% endfor %}
+</section>
+
+<div class="grid-2">
+  <section class="card">
+    <div class="card-head">
+      <h2>近 7 天夜间睡眠</h2>
+      <a class="link" href="/sleep">睡眠分析</a>
+    </div>
+    {{ render_chart(sleep_chart) }}
+    <p class="note">目标：{{ target_text }}</p>
+    <p class="note">空心柱表示当天没有已确认数据；虚线为睡眠目标，不参与统计。</p>
+  </section>
+
+  <section class="card">
+    <h2>待处理</h2>
+    <ul class="todo">
+      <li><a href="/records?status=pending"><span>待确认记录</span><b class="warn-text">{{ counts.pending }}</b></a></li>
+      <li><a href="/conflicts"><span>待裁决冲突</span><b class="danger-text">{{ conflicts }}</b></a></li>
+      <li><a href="/alerts"><span>未读提醒</span><b>{{ unread_alerts }}</b></a></li>
+    </ul>
+    <p class="note">未确认（pending）的数据不计入任何趋势、基线或提醒。</p>
+    <p class="note">带标记记录 {{ flagged }} 条。</p>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <h2>最近记录</h2>
+    <a class="link" href="/records">查看全部</a>
+  </div>
+  {% if recent %}
+  <table class="table">
+    <thead><tr><th>日期</th><th>指标</th><th class="num">数值</th><th>状态</th></tr></thead>
+    <tbody>
+      {% for item in recent %}
+      <tr>
+        <td>{{ item.record_date }}</td>
+        <td>{{ labels.get(item.metric_name, item.metric_name) }}
+          {% if item.flags %}<span class="flag">{{ item.flags|join(' · ') }}</span>{% endif %}
+        </td>
+        <td class="num">{% if item.value is none %}<span class="muted">—</span>{% else %}{{ '%g'|format(item.value) }} {{ item.unit }}{% endif %}</td>
+        <td>{{ record_tag(item.verification_status) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">还没有任何记录。先去 <a href="/imports">导入</a> 一份数据。</p>
+  {% endif %}
+</section>
+
+<p class="legend">
+  <span class="tag pending">待确认</span> 不入趋势
+  <span class="tag confirmed">已确认</span> 可进趋势
+  <span class="tag provisional">暂定定义</span> 字段未与设备核对
+</p>
+{% endblock %}

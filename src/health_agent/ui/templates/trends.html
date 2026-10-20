@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "_macros.html" import chart as render_chart, quality_line, verification_tag, empty_state %}
+{% block title %}指标趋势{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>指标趋势</h1>
+    <p class="sub">{{ summary.window_start }} ~ {{ summary.window_end }} · 仅统计已确认记录</p>
+  </div>
+  <div class="seg">
+    {% for option in [7, 30, 90] %}
+    <a class="seg-item{% if days == option %} is-active{% endif %}"
+       href="/trends?metric={{ metric }}&days={{ option }}">{{ option }} 天</a>
+    {% endfor %}
+  </div>
+</header>
+
+<form class="filters" method="get" action="/trends">
+  <input type="hidden" name="days" value="{{ days }}">
+  <label>指标
+    <select name="metric" onchange="this.form.submit()">
+      {% for tier, group in groups %}
+      <optgroup label="{{ tier }}">
+        {% for item in group %}
+        <option value="{{ item.name }}" {% if item.name == metric %}selected{% endif %}>
+          {{ item.display }}{% if item.verification == 'provisional' %}（暂定定义）{% endif %}
+        </option>
+        {% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit">查看</button>
+  <span class="filters-note">{{ verification_tag(spec.verification) }}</span>
+</form>
+
+{% if is_range %}
+<p class="banner warn">
+  「{{ spec.display }}」是区间端点指标：图上是每天的下限与上限，<strong>没有平均值</strong>，也不会被计算。
+</p>
+{% endif %}
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ spec.display }}</h2>
+    <span class="muted small">单位：{{ spec.unit }}</span>
+  </div>
+  {{ render_chart(chart) }}
+  <p class="note">{{ quality_line(summary) }}</p>
+  {% if is_range %}
+  <p class="note">阴影带表示当天的最低值到最高值；缺口表示当天没有成对的上下限记录。</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>本期统计</h2>
+  {% if is_range %}
+  <p class="muted">区间端点指标只展示原始上下限，不计算均值、中位数等聚合值。</p>
+  {% elif summary.sample_days == 0 %}
+  {{ empty_state('这段时间没有已确认数据', '待确认的记录不会进入统计。', '/imports', '去导入') }}
+  {% else %}
+  <dl class="stat-grid">
+    <div><dt>均值</dt><dd>{{ summary.mean|human(summary.unit, metric) }}</dd></div>
+    <div><dt>中位</dt><dd>{{ summary.median|human(summary.unit, metric) }}</dd></div>
+    <div><dt>最低</dt><dd>{{ summary.min|human(summary.unit, metric) }}</dd></div>
+    <div><dt>最高</dt><dd>{{ summary.max|human(summary.unit, metric) }}</dd></div>
+    <div><dt>有效天数</dt><dd>{{ summary.sample_days }}/{{ summary.window_days }}</dd></div>
+    <div><dt>缺失率</dt><dd>{{ '%.0f'|format(summary.missing_rate * 100) }}%</dd></div>
+  </dl>
+  {% if summary.status != 'ok' %}
+  <p class="note warn-text">有效天数不足，以上数字仅供参考，不构成趋势判断。</p>
+  {% endif %}
+  {% endif %}
+</section>
+
+<p class="legend">
+  周/月视图记录不参与日趋势；缺失日不插值、不补 0；超范围记录只标记，不修正。
+</p>
+{% endblock %}

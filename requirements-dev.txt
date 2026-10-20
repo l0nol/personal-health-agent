@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# 开发/测试专用，仅本地安装，不随发布产物分发
+pytest==9.1.1

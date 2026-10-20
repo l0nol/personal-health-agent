@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}设置{% endblock %}
+{% block content %}
+<h1>设置</h1>
+<p class="muted">以下全部可选。留空表示不设置，系统照常工作。</p>
+
+<section class="card">
+  <h2>外观</h2>
+  <p class="muted">当前模式：{{ '时钟模式' if mode == 'chronos' else '简洁模式' }}。切换只影响首页与导航样式，不改任何数据。</p>
+  <form method="post" action="/settings/mode" class="mode-switch">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="next_path" value="/settings">
+    {% for value, label in [('simple', '简洁模式'), ('chronos', '时钟模式（Demo）')] %}
+    <button class="mode-option {{ 'selected' if mode == value else '' }}" name="mode" value="{{ value }}">
+      {{ label }}{% if mode == value %} · 当前{% endif %}
+    </button>
+    {% endfor %}
+  </form>
+</section>
+
+<section class="card">
+  <h2>生活背景</h2>
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+
+    <label>大致起床时间
+      <input type="text" name="wake_time" value="{{ values.get('wake_time', '') }}" placeholder="07:00">
+    </label>
+    <label>大致就寝时间
+      <input type="text" name="sleep_time" value="{{ values.get('sleep_time', '') }}" placeholder="23:30">
+    </label>
+    <label>课程 / 工作时间
+      <input type="text" name="work_schedule" value="{{ values.get('work_schedule', '') }}" placeholder="周一至周五 8:00-17:00">
+    </label>
+    <label>习惯目标
+      <input type="text" name="habit_goals" value="{{ values.get('habit_goals', '') }}" placeholder="每天走 6000 步">
+    </label>
+    <label>提醒频率
+      <select name="reminder_frequency">
+        {% set current = values.get('reminder_frequency', '') %}
+        <option value="" {% if current == '' %}selected{% endif %}>不设置</option>
+        <option value="daily" {% if current == 'daily' %}selected{% endif %}>每天</option>
+        <option value="weekly" {% if current == 'weekly' %}selected{% endif %}>每周</option>
+        <option value="off" {% if current == 'off' %}selected{% endif %}>关闭提醒</option>
+      </select>
+    </label>
+    <label>补充说明
+      <textarea name="notes" rows="3">{{ values.get('notes', '') }}</textarea>
+    </label>
+
+    <button type="submit">保存</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>运行信息</h2>
+  <dl class="kv">
+    <dt>数据库</dt><dd>{{ db_path }}</dd>
+    <dt>局域网访问</dt><dd>{{ '开启（需要密码）' if lan_enabled else '关闭（仅本机）' }}</dd>
+    <dt>AI 分析</dt><dd>{{ '已配置密钥' if ai_enabled else '未配置，简报将使用本地模板文案' }}</dd>
+    <dt>睡眠目标</dt><dd>{{ sleep_target }}</dd>
+  </dl>
+  <p class="hint">
+    睡眠目标通过环境变量 <code>HEALTH_AGENT_SLEEP_TARGET_MIN</code> 修改（单位：分钟），改完重启生效。
+    本页只显示当前生效值，不提供第二个修改入口，避免两处配置打架。
+  </p>
+  <p class="hint">密钥只在环境变量里配置，不会出现在本页或日志中。</p>
+</section>
+
+<section class="card">
+  <h2>数据</h2>
+  <p><a href="/export.csv">导出全部记录 CSV</a> · <a href="/export.json">导出 JSON</a></p>
+  <p class="hint">删除整个数据库请直接删除数据目录下的 health.db 文件（应用需先停止）。</p>
+</section>
+{% endblock %}

@@ -1,0 +1,11 @@
+metric_name,record_date,value,unit,period_type,note
+night_sleep_minutes,2026-10-04,6.5,h,day,"用小时给出，应换算为 390 分钟并保留原始值"
+night_sleep_minutes,2026-10-05,1:23,min,day,"时长文本，应解析为 83 分钟"
+resting_hr_bpm,2026-10-05,--,bpm,day,"页面被遮挡，应为不可读而非 0"
+steps_count,2026-10-05,12000,次,day,"单位别名，应归一到 count"
+night_sleep_minutes,2026-10-06,900,min,day,"超出合理上限，保留原值并标记待复核"
+activity_energy_kcal,2026-10-06,500,kJ,day,"能量换算，应约为 119.5 kcal"
+unknown_metric_x,2026-10-06,1,count,day,"未注册指标，应拒绝"
+resting_hr_bpm,not-a-date,60,bpm,day,"日期无法识别，应拒绝"
+night_sleep_minutes,2026-10-07,400,%,day,"比例不能换算为时长，应拒绝"
+night_sleep_minutes,2026-10-08,400,min,week,"周记录缺 period_start/period_end，应拒绝"

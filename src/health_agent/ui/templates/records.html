@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}记录{% endblock %}
+{% block content %}
+<h1>记录 <span class="muted small">共 {{ total }} 条</span></h1>
+
+<form class="filters" method="get" action="/records">
+  <label>指标
+    <select name="metric">
+      <option value="">全部</option>
+      {% for name, label in labels.items() %}
+      <option value="{{ name }}" {% if name == metric %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>状态
+    <select name="status">
+      {% for option in ['', 'pending', 'confirmed', 'rejected', 'superseded'] %}
+      <option value="{{ option }}" {% if option == status %}selected{% endif %}>{{ option or '全部' }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>条数 <input type="number" name="limit" value="{{ limit }}" min="1" max="500"></label>
+  <button type="submit">筛选</button>
+</form>
+
+{% if items %}
+<table class="records">
+  <thead>
+    <tr><th>日期</th><th>指标</th><th class="num">数值</th><th>状态</th><th>标记</th><th>操作</th></tr>
+  </thead>
+  <tbody>
+  {% for item in items %}
+    <tr>
+      <td>{{ item.record_date }}<br><span class="muted small">{{ item.period_type }}</span></td>
+      <td>{{ labels.get(item.metric_name, item.metric_name) }}
+        {% if 'unit_converted' in item.flags or 'value_parsed_from_text' in item.flags %}<br><span class="muted small">原始：{{ item.raw_value }} {{ item.raw_unit or '' }}</span>{% endif %}
+      </td>
+      <td class="num">{% if item.value is none %}<span class="muted">—</span>{% else %}{{ '%g'|format(item.value) }} {{ item.unit }}{% endif %}</td>
+      <td><span class="tag {{ item.verification_status }}">{{ item.verification_status }}</span></td>
+      <td>
+        {% for flag in item.flags %}<span class="flag">{{ flag }}</span>{% endfor %}
+        {% if not item.flags %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td class="ops">
+        {% if item.verification_status == 'pending' %}
+        <form method="post" action="/records/{{ item.record_id }}/confirm">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><button class="mini">确认</button>
+        </form>
+        <form method="post" action="/records/{{ item.record_id }}/reject">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><button class="mini ghost">驳回</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/records/{{ item.record_id }}/revise" class="inline-form">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="number" step="any" name="value" placeholder="修正值" required>
+          <button class="mini ghost">改</button>
+        </form>
+        <form method="post" action="/records/{{ item.record_id }}/delete" onsubmit="return confirm('删除后不可恢复，确定？');">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><button class="mini danger">删除</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="hint">修正已确认记录会生成新版本，旧版本保留为 superseded，历史可查。</p>
+{% else %}
+<p class="muted">没有符合条件的记录。</p>
+{% endif %}
+{% endblock %}

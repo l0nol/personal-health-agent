@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "_macros.html" import chart as render_chart, quality_line, empty_state %}
+{% block title %}睡眠分析{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>睡眠分析</h1>
+    <p class="sub">{{ duration.window_start }} ~ {{ duration.window_end }} · 目标：{{ target_text }}</p>
+  </div>
+  <div class="seg">
+    {% for option in [7, 30, 90] %}
+    <a class="seg-item{% if days == option %} is-active{% endif %}" href="/sleep?days={{ option }}">{{ option }} 天</a>
+    {% endfor %}
+  </div>
+</header>
+
+{% if duration.status != 'ok' %}
+<p class="banner warn">
+  {{ quality_line(duration) }}。下面只展示原始记录，不做趋势判断。
+</p>
+{% endif %}
+
+<section class="card">
+  <div class="card-head">
+    <h2>每日夜间睡眠时长</h2>
+    <span class="muted small">{{ duration.sample_days }}/{{ duration.window_days }} 天有效</span>
+  </div>
+  {{ render_chart(chart) }}
+  <p class="note">单位：分钟。虚线为目标值，仅作参考，不参与统计。</p>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>睡眠结构</h2>
+    <span class="muted small">设备原值，不换算</span>
+  </div>
+  <div class="stages">
+    {% for stage in stages %}
+    <div class="stage">
+      <span class="stage-label">{{ stage.label }}</span>
+      <span class="stage-value">
+        {% if stage.value is none %}<span class="muted">设备未提供</span>
+        {% else %}{{ '%g'|format(stage.value) }}%{% endif %}
+      </span>
+      <span class="stage-bar"><i style="width: {{ stage.value or 0 }}%; background: {{ stage.color }}"></i></span>
+      <span class="stage-foot">
+        {% if stage.value is none %}留空，不推算{% else %}{{ stage.date }} · 近 {{ days }} 天有效 {{ stage.sample_days }} 天{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="note">只显示设备给出的比例。设备若只给分钟数，这里显示"设备未提供"，不会用时长相除换算比例。</p>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>明细</h2>
+    <span class="muted small">仅列已确认记录{% if pending %} · 另有 {{ pending }} 条待确认{% endif %}</span>
+  </div>
+  {% if rows %}
+  <table class="table">
+    <thead><tr><th>日期</th><th class="num">时长</th><th>来源记录</th></tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.label }}</td>
+        <td class="num">{{ row.value|human('min', 'night_sleep_minutes') }}</td>
+        <td class="mono muted">{{ (row.record_id or '')[:10] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  {{ empty_state('还没有睡眠数据', '导入截图提取的 JSON/CSV 后，确认记录才会出现在这里。', '/imports', '去导入') }}
+  {% endif %}
+</section>
+
+<p class="legend">睡眠评分等设备原值只做展示，不做二次解读。数据不足时不给平均值。</p>
+{% endblock %}

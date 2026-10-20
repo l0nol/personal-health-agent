@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "source_app": "huawei_health",
+  "source_page": "运动健康-日视图",
+  "extraction_method": "manual",
+  "note": "虚构样例。数值均为编写者编造，不代表任何真实个人的健康数据，也不代表设备真实读数。",
+  "records": [
+    { "metric_name": "night_sleep_minutes", "record_date": "2026-10-01", "value": 402, "unit": "min", "period_type": "day" },
+    { "metric_name": "nap_minutes", "record_date": "2026-10-01", "value": 25, "unit": "min", "period_type": "day" },
+    { "metric_name": "resting_hr_bpm", "record_date": "2026-10-01", "value": 58, "unit": "bpm", "period_type": "day" },
+    { "metric_name": "sleep_avg_hr_bpm", "record_date": "2026-10-01", "value": 62, "unit": "bpm", "period_type": "day" },
+    { "metric_name": "steps_count", "record_date": "2026-10-01", "value": 8421, "unit": "count", "period_type": "day" },
+    { "metric_name": "activity_energy_kcal", "record_date": "2026-10-01", "value": 410, "unit": "kcal", "period_type": "day" },
+    { "metric_name": "deep_sleep_percent", "record_date": "2026-10-01", "value": 21, "unit": "%", "period_type": "day" },
+
+    { "metric_name": "night_sleep_minutes", "record_date": "2026-10-02", "value": 355, "unit": "min", "period_type": "day" },
+    { "metric_name": "nap_minutes", "record_date": "2026-10-02", "value": null, "unit": "min", "period_type": "day", "notes": "该日页面未显示零星小睡" },
+    { "metric_name": "resting_hr_bpm", "record_date": "2026-10-02", "value": 61, "unit": "bpm", "period_type": "day" },
+    { "metric_name": "sleep_avg_hr_bpm", "record_date": "2026-10-02", "value": 64, "unit": "bpm", "period_type": "day" },
+    { "metric_name": "steps_count", "record_date": "2026-10-02", "value": 6103, "unit": "count", "period_type": "day" },
+    { "metric_name": "activity_energy_kcal", "record_date": "2026-10-02", "value": 322, "unit": "kcal", "period_type": "day" },
+    { "metric_name": "deep_sleep_percent", "record_date": "2026-10-02", "value": 17, "unit": "%", "period_type": "day" },
+
+    { "metric_name": "night_sleep_minutes", "record_date": "2026-10-03", "value": 468, "unit": "min", "period_type": "day" },
+    { "metric_name": "nap_minutes", "record_date": "2026-10-03", "value": 30, "unit": "min", "period_type": "day" },
+    { "metric_name": "resting_hr_bpm", "record_date": "2026-10-03", "value": 57, "unit": "bpm", "period_type": "day" },
+    { "metric_name": "sleep_avg_hr_bpm", "record_date": "2026-10-03", "value": 60, "unit": "bpm", "period_type": "day" },
+    { "metric_name": "steps_count", "record_date": "2026-10-03", "value": 11250, "unit": "count", "period_type": "day" },
+    { "metric_name": "activity_energy_kcal", "record_date": "2026-10-03", "value": 520, "unit": "kcal", "period_type": "day" },
+    { "metric_name": "deep_sleep_percent", "record_date": "2026-10-03", "value": 24, "unit": "%", "period_type": "day" }
+  ]
+}

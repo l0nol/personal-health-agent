@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}冲突{% endblock %}
+{% block content %}
+<h1>冲突裁决</h1>
+<p class="muted">同一来源、日期、指标与周期的记录只能有一条「已确认」。这里不会替你选真值。</p>
+
+{% if rows %}
+<table>
+  <thead><tr><th>指标</th><th>日期</th><th class="num">已有值</th><th class="num">新值</th><th>操作</th></tr></thead>
+  <tbody>
+  {% for row in rows %}
+    <tr>
+      <td>{{ labels.get(row.metric_name, row.metric_name) }}</td>
+      <td>{{ row.record_date }}</td>
+      <td class="num">
+        {% if row.old_value is none %}<span class="muted">—</span>{% else %}{{ '%g'|format(row.old_value) }} {{ row.old_unit }}{% endif %}
+        <br><span class="muted small">{{ row.old_status or '无' }}</span>
+      </td>
+      <td class="num">{{ '%g'|format(row.new_value) if row.new_value is not none else '—' }} {{ row.new_unit }}
+        <br><span class="muted small">{{ row.new_status }}</span>
+      </td>
+      <td class="ops">
+        <form method="post" action="/conflicts/{{ row.conflict_id }}/resolve">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="resolution" value="keep_existing">
+          <button class="mini">保留已有</button>
+        </form>
+        <form method="post" action="/conflicts/{{ row.conflict_id }}/resolve">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="resolution" value="take_incoming">
+          <button class="mini ghost">采用新值</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="hint">「保留已有」会把新值标为 rejected；「采用新值」会把旧值转为 superseded 并把新值确认。</p>
+{% else %}
+<p class="muted">没有待裁决的冲突。</p>
+{% endif %}
+{% endblock %}

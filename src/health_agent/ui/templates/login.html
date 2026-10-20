@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}登录{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>需要密码</h1>
+  <p class="muted">这台机器开启了访问密码。健康数据不适合在未验证的情况下展示。</p>
+  <form method="post" action="/login">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label>密码
+      <input type="password" name="password" autofocus required>
+    </label>
+    <button type="submit">进入</button>
+  </form>
+</section>
+{% endblock %}

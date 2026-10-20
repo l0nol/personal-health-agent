@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}提醒{% endblock %}
+{% block content %}
+<h1>提醒 <span class="muted small">未读 {{ unread_count }}</span></h1>
+
+<div class="filters">
+  <form method="post" action="/alerts/run">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">立即评估</button>
+  </form>
+  <a class="link" href="/alerts{{ '' if unread_only else '?unread=1' }}">
+    {{ '查看全部' if unread_only else '只看未读' }}
+  </a>
+</div>
+
+<p class="hint">
+  提醒只是提示，不是诊断。每条都给出触发原因、依据的记录和一条低风险建议；
+  同一窗口不会重复提醒，同类提醒有 72 小时冷却。
+</p>
+
+{% if items %}
+<section class="card-list">
+  {% for item in items %}
+  <article class="card alert {{ item.severity }}">
+    <header class="alert-head">
+      <span class="tag {{ 'rejected' if item.severity == 'warn' else 'active' }}">{{ item.rule_id }}</span>
+      <span class="muted small">{{ item.window_start }} ~ {{ item.window_end }}</span>
+      {% if not item.read_at %}<span class="tag pending">未读</span>{% endif %}
+      {% if item.feedback != 'none' %}<span class="tag">{{ item.feedback }}</span>{% endif %}
+    </header>
+    <p class="alert-reason">{{ item.trigger_reason }}</p>
+    {% if item.suggested_action %}<p class="alert-action">建议：{{ item.suggested_action }}</p>{% endif %}
+    {% if item.evidence %}
+    <details class="small muted">
+      <summary>依据的 {{ item.evidence|length }} 条记录</summary>
+      {% for rid in item.evidence %}<div><code>{{ rid[:12] }}</code></div>{% endfor %}
+    </details>
+    {% endif %}
+    <div class="ops">
+      {% if not item.read_at %}
+      <form method="post" action="/alerts/{{ item.alert_id }}/read">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><button class="mini ghost">标记已读</button>
+      </form>
+      {% endif %}
+      <form method="post" action="/alerts/{{ item.alert_id }}/feedback">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="feedback" value="helpful">
+        <button class="mini ghost">有帮助</button>
+      </form>
+      <form method="post" action="/alerts/{{ item.alert_id }}/feedback">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="feedback" value="acted">
+        <button class="mini ghost">已照做</button>
+      </form>
+      <form method="post" action="/alerts/{{ item.alert_id }}/feedback">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="feedback" value="irrelevant">
+        <button class="mini ghost">不相关</button>
+      </form>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% else %}
+<p class="muted">还没有提醒。数据够多之后点「立即评估」看看。</p>
+{% endif %}
+{% endblock %}

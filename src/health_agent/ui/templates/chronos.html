@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}时钟模式{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>时钟模式 <span class="badge-demo">Demo</span></h1>
+    <p class="sub">外环导航 · 中心摘要 · 普通入口始终可用</p>
+  </div>
+  <form method="post" action="/settings/mode">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="mode" value="simple">
+    <input type="hidden" name="next_path" value="/">
+    <button class="btn secondary">切回简洁模式</button>
+  </form>
+</header>
+
+<div class="chronos">
+  <div class="dial" role="navigation" aria-label="表盘导航">
+    <div class="dial-face"></div>
+
+    <a class="sector" style="--i:0" href="/sleep"><span>睡眠</span></a>
+    <a class="sector" style="--i:1" href="/trends"><span>趋势</span></a>
+    <a class="sector" style="--i:2" href="/imports"><span>导入</span></a>
+    <a class="sector" style="--i:3" href="/alerts"><span>提醒</span></a>
+    <a class="sector" style="--i:4" href="/reports"><span>报告</span></a>
+    <a class="sector" style="--i:5" href="/settings"><span>设置</span></a>
+
+    <div class="dial-core">
+      <p class="core-date">{{ end_day }}</p>
+      <p class="core-metric">待确认 <b class="warn-text">{{ counts.pending }}</b></p>
+      <p class="core-metric">冲突 <b class="danger-text">{{ conflicts }}</b></p>
+      <p class="core-note">未读提醒 {{ unread_alerts }}</p>
+    </div>
+  </div>
+
+  <div class="chronos-tiles">
+    {% for tile in tiles %}
+    <a class="tile" href="{{ tile.href }}">
+      <span class="tile-label">{{ tile.label }}</span>
+      <span class="tile-value">{{ tile.value|human(tile.unit, tile.metric) }}</span>
+      <span class="tile-foot">近 7 天有效 {{ tile.days }}/7 天</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<section class="card">
+  <h2>普通入口</h2>
+  <p class="note">表盘只是另一种排版；不使用表盘也能到达所有页面（键盘 Tab 同样可用）。</p>
+  <div class="link-grid">
+    <a href="/">首页</a><a href="/sleep">睡眠分析</a><a href="/trends">指标趋势</a>
+    <a href="/reports">报告</a><a href="/records">记录</a><a href="/imports">导入</a>
+    <a href="/conflicts">冲突</a><a href="/alerts">提醒</a><a href="/settings">设置与隐私</a>
+  </div>
+</section>
+
+<p class="legend">
+  Demo 范围：表盘导航 + 中心摘要 + 模式持久化。拖动旋转与动画尚未实现；
+  系统开启"减少动态效果"时不播放任何动画。
+</p>
+{% endblock %}

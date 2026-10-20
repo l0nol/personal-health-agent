@@ -1,0 +1,70 @@
+{% macro navlink(href, label, current) -%}
+<a class="nav-link{% if current == href or (href != '/' and current.startswith(href)) %} is-active{% endif %}" href="{{ href }}">{{ label }}</a>
+{%- endmacro %}
+
+{% macro record_tag(status) -%}
+<span class="tag {{ status }}">{{ status }}</span>
+{%- endmacro %}
+
+{% macro verification_tag(verification) -%}
+{% if verification == 'device_verified' %}<span class="tag verified">已核字段</span>
+{% else %}<span class="tag provisional">暂定定义</span>{% endif %}
+{%- endmacro %}
+
+{% macro empty_state(title, text, href=None, action=None) -%}
+<div class="empty">
+  <p class="empty-title">{{ title }}</p>
+  <p class="empty-text">{{ text }}</p>
+  {% if href %}<a class="btn secondary" href="{{ href }}">{{ action }}</a>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro chart(model) -%}
+{% if not model.has_data %}
+  {{ empty_state('这段时间没有已确认数据', '待确认或缺失的数据不会进入图表。') }}
+{% else %}
+<svg class="chart" viewBox="0 0 {{ model.width }} {{ model.height }}" role="img" aria-label="趋势图">
+  {% for tick in model.y_ticks %}
+  <line class="grid" x1="46" x2="{{ model.width - 14 }}" y1="{{ tick.y }}" y2="{{ tick.y }}"/>
+  <text class="axis" x="40" y="{{ tick.y + 3 }}" text-anchor="end">{{ tick.label }}</text>
+  {% endfor %}
+
+  {% if model.kind == 'line' %}
+    {% for segment in model.segments %}
+    <polyline class="series" points="{{ segment }}"/>
+    {% endfor %}
+    {% for dot in model.dots %}
+    <circle class="dot" cx="{{ dot.x }}" cy="{{ dot.y }}" r="2.6"><title>{{ dot.label }} · {{ dot.value }}</title></circle>
+    {% endfor %}
+    {% for gap in model.missing %}
+    <circle class="dot-missing" cx="{{ gap.x }}" cy="{{ model.height - 26 }}" r="2.4"><title>{{ gap.label }} 无已确认数据</title></circle>
+    {% endfor %}
+  {% elif model.kind == 'bars' %}
+    {% for bar in model.bars %}
+    <rect class="bar{% if bar.missing %} missing{% endif %}" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.w }}" height="{{ bar.h }}" rx="3">{% if not bar.missing %}<title>{{ bar.label }} · {{ bar.value }}</title>{% endif %}</rect>
+    {% endfor %}
+    {% if model.target %}
+    <line class="target" x1="46" x2="{{ model.width - 14 }}" y1="{{ model.target.y }}" y2="{{ model.target.y }}"/>
+    <text class="axis" x="{{ model.width - 14 }}" y="{{ model.target.y - 5 }}" text-anchor="end">目标 {{ model.target.label }}</text>
+    {% endif %}
+  {% elif model.kind == 'band' %}
+    <path class="band-area" d="{{ model.area }}"/>
+    <polyline class="band-edge" points="{{ model.high_line }}"/>
+    <polyline class="band-edge" points="{{ model.low_line }}"/>
+  {% endif %}
+
+  {% for label in model.x_labels %}
+  <text class="axis" x="{{ label.x }}" y="{{ model.height - 8 }}" text-anchor="middle">{{ label.text }}</text>
+  {% endfor %}
+</svg>
+{% endif %}
+{%- endmacro %}
+
+{% macro quality_line(summary) -%}
+<span class="quality">
+  {{ summary.window_start }} ~ {{ summary.window_end }}
+  · 有效 {{ summary.sample_days }}/{{ summary.window_days }} 天
+  {% if summary.missing_days %}· 缺失 {{ summary.missing_days }} 天{% endif %}
+  {% if summary.status != 'ok' %}· <span class="warn-text">{{ '数据不足' if summary.status == 'insufficient' else '无数据' }}，不做趋势判断</span>{% endif %}
+</span>
+{%- endmacro %}
