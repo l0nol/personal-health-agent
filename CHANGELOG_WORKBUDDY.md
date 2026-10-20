@@ -124,3 +124,23 @@
 - **未验证项目**：未配置 remote（本地仓库）；未演练后续 `git diff`/回滚工作流
 - **剩余风险**：CRLF 警告（Windows 换行符归一化，git 自动处理，无功能影响）
 - **状态**：已生效（用户 2026-10-20 授权"可以"）
+
+### 2026-10-20 — T03 — 双 UI 设计方案与 Galaxy 选型
+
+- **修改文件**：`TASK_STATUS.md`（T03 待审核）；`CHANGELOG_WORKBUDDY.md`（本记录）
+- **新增文件**：`reports/T03_UI_DESIGN_GALAXY_REPORT.md`（设计交付物）
+- **删除文件**：无
+- **执行命令**：
+  - 通读 `tasks/T03_UI_DESIGN_GALAXY.md`、`references/GALAXY_UI_REFERENCE.md`、`references/DESIGN_BRIEF.md`、`docs/04-ui-design-spec-v1.md`
+  - 核对现状：`app.css`（347 行 token 与断点）、`base.html`/`index.html`/`chronos.html`/`settings.html`/`_macros.html`、32 条路由、`analytics/baseline.py::compute_baseline` 签名与 insufficient 分支
+  - `grep 参照|基线|reference` 模板目录 → 确认"参照范围"行尚不存在（用户 10-20 裁决的新增组件）
+  - WebFetch `github.com/uiverse-io/galaxy` → 实证：MIT（LICENSE 2023-10-08）、署名"非强制但建议创作者+Uiverse"、CSS/Tailwind 双实现、11 个类别目录
+- **测试结果**：本任务零代码修改；实测全量 **324 passed / 2 warnings / EXIT=0**（`--basetemp=/tmp/phealth-t03-run5`，按 ERR-017 用全新目录名）。2 warnings = starlette TestClient 弃用提示 + `app.py:55` 文档字符串 `\e` 转义 SyntaxWarning（T02 遗留，T02 记录中"均为第三方"说法不准确，特此更正；修复留 T04，改原始字符串即可）
+- **代码证据**：
+  - Galaxy 选型结论：**0 个组件复制代码、0 新依赖、0 构建变更**（报告 §3.2 逐类七字段评估表）
+  - "参照范围"行契约：数据源 `compute_baseline(..., window_days=28, min_samples=14, mad_factor=2.5)`，insufficient/no_data/range_bound 三态各有规定文案（报告 §2.4）
+  - Chronos 结构契约：表盘 6 扇区 ↔ 六页、中心预览与 Simple 同值、拖动旋转维持"未实现"、reduced-motion 已有包裹（`app.css:309-312`）
+- **已确认并记录的不一致**：任务书"Chronos 深蓝/深色" vs 用户 10-20 裁决"默认浅色、不实现深色主题" vs 现有 Demo 浅色 → 列为待裁决 D-1，默认按裁决走浅色，深色 token 集备用
+- **未验证项目**：元素级 Galaxy 选型与创作者署名（采用后置门槛）、真实平板触测、reduced-motion 实机、U5 基线参数、D-1/D-3 裁决
+- **剩余风险**：R1 U5 未定导致参照范围口径浮动；R4 基线查询进渲染路径的性能（已设 50ms 预算与降级文案）
+- **状态**：待审核（等 D-1/D-2 裁决后进 T04）

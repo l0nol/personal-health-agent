@@ -7,7 +7,7 @@
 | T00 | 基线盘点 | 已批准 | `reports/T00_BASELINE_REPORT.md` | 用户 2026-10-20 08:52 批准（"开始下一步 T01"） |
 | T01 | 数据可靠性检查与必要修复 | 已批准 | `reports/T01_DATA_RELIABILITY_REPORT.md` | 用户 2026-10-20 13:46 批准（"继续02"） |
 | T02 | 安全、备份与 AI 回退 | 已批准 | `reports/T02_SECURITY_BACKUP_AI_REPORT.md` | 用户 2026-10-20 批准（"可以"）；4 缺陷修复 + 13 新测试；324 passed / 2 warnings |
-| T03 | 双 UI 设计方案与 Galaxy 选型 | 进行中 |  |  |
+| T03 | 双 UI 设计方案与 Galaxy 选型 | 待审核 | `reports/T03_UI_DESIGN_GALAXY_REPORT.md` | 只设计未实现；5 项待裁决（D-1 Chronos 明暗 / D-2=U5 基线参数优先） |
 | T04 | Simple 模式实现 | 未开始 |  |  |
 | T05 | Chronos 模式实现 | 未开始 |  |  |
 | T06 | 最终回归与交付检查 | 未开始 |  |  |
