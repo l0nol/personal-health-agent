@@ -133,12 +133,30 @@ def list_alerts(
     *,
     limit: int = 50,
     unread_only: bool = False,
+    rule_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    sql = "SELECT * FROM alerts"
+    """按条件列提醒。三个过滤条件都可选，默认行为与仅传 limit 时一致。"""
+    where: list[str] = []
+    params: list[Any] = []
     if unread_only:
-        sql += " WHERE read_at IS NULL"
+        where.append("read_at IS NULL")
+    if rule_id:
+        where.append("rule_id = ?")
+        params.append(rule_id)
+    sql = "SELECT * FROM alerts"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY created_at DESC LIMIT ?"
-    return [_row_to_dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
+    params.append(limit)
+    return [_row_to_dict(row) for row in conn.execute(sql, tuple(params)).fetchall()]
+
+
+def list_rule_ids(conn: sqlite3.Connection) -> list[str]:
+    """出现过提醒的规则 ID，供筛选下拉用（没有提醒时返回空列表）。"""
+    rows = conn.execute(
+        "SELECT DISTINCT rule_id FROM alerts ORDER BY rule_id"
+    ).fetchall()
+    return [row["rule_id"] for row in rows]
 
 
 def count_unread(conn: sqlite3.Connection) -> int:

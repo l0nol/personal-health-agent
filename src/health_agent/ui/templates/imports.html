@@ -1,7 +1,9 @@
 {% extends "base.html" %}
+{% from "_macros.html" import step_bar %}
 {% block title %}导入{% endblock %}
 {% block content %}
 <h1>导入</h1>
+{{ step_bar([('上传', None), ('预览（不写库）', None), ('写入（全部 pending）', None)], 1) }}
 
 <section class="card">
   <h2>上传文件</h2>

@@ -7,8 +7,8 @@
 | T00 | 基线盘点 | 已批准 | `reports/T00_BASELINE_REPORT.md` | 用户 2026-10-20 08:52 批准（"开始下一步 T01"） |
 | T01 | 数据可靠性检查与必要修复 | 已批准 | `reports/T01_DATA_RELIABILITY_REPORT.md` | 用户 2026-10-20 13:46 批准（"继续02"） |
 | T02 | 安全、备份与 AI 回退 | 已批准 | `reports/T02_SECURITY_BACKUP_AI_REPORT.md` | 用户 2026-10-20 批准（"可以"）；4 缺陷修复 + 13 新测试；324 passed / 2 warnings |
-| T03 | 双 UI 设计方案与 Galaxy 选型 | 待审核 | `reports/T03_UI_DESIGN_GALAXY_REPORT.md` | 只设计未实现；5 项待裁决（D-1 Chronos 明暗 / D-2=U5 基线参数优先） |
-| T04 | Simple 模式实现 | 未开始 |  |  |
+| T03 | 双 UI 设计方案与 Galaxy 选型 | 已批准 | `reports/T03_UI_DESIGN_GALAXY_REPORT.md` | 用户 2026-10-20 批准 D-1（Chronos 浅色）/ D-2（基线参数 28 天 / ≥14 天 / 2.5×MAD，U5 关闭）后进 T04 |
+| T04 | Simple 模式实现 | 待审核 | `reports/T04_SIMPLE_UI_REPORT.md` | 12 文件 +407/−128；346 passed / 1 warning；D-1/D-2/D-5 已随批准关闭 |
 | T05 | Chronos 模式实现 | 未开始 |  |  |
 | T06 | 最终回归与交付检查 | 未开始 |  |  |
 
@@ -24,5 +24,5 @@
 | 应用版本 | 0.1.2 |
 | Python | 3.13.14（项目 `.venv`） |
 | 测试基线 | 295 passed / 0 failed / 0 skipped / 31 warnings |
-| 版本控制 | 无 Git 仓库（待用户裁决） |
+| 版本控制 | T00 时无 Git 仓库；2026-10-20 15:30 已 `git init -b main` 并基线提交 `060e538`（dist/ 已 gitignore） |
 | 数据库 | 工作区内无 `.db`，库未初始化；迁移可独立建库（11 表 / 10 索引 / 37 指标） |

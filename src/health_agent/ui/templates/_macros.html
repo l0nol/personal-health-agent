@@ -19,6 +19,82 @@
 </div>
 {%- endmacro %}
 
+{% macro banner(kind, text) -%}
+{% if text %}<p class="banner {{ kind }}">{{ text }}</p>{% endif %}
+{%- endmacro %}
+
+{% macro value_cell(item) -%}
+{# 导入预览的"原始值→归一值"单元格：只有真的变了才画箭头，没变就只显示归一值 #}
+{% set r = item.record -%}
+{% if r.value is none -%}
+—
+{% elif r.raw_value is none or ('%g'|format(r.value)) != (r.raw_value|string) -%}
+{{ r.raw_value if r.raw_value is not none else '—' }}{{ ' ' ~ r.raw_unit if r.raw_unit }} → {{ r.value|human(r.unit, r.metric_name) }}
+{% else -%}
+{{ r.value|human(r.unit, r.metric_name) }}
+{% endif -%}
+{%- endmacro %}
+
+{% macro metric_cell(name, labels) -%}
+{# 指标单元格：中文名 + 字段名（字段名供对照数据字典） #}
+{{ labels.get(name, name) }}<span class="muted small"> {{ name }}</span>
+{%- endmacro %}
+
+{% macro step_bar(steps, current) -%}
+{# steps: [(label, href_or_None), ...]；current: 1 起。当前步高亮，未来步可点则不灰着占位 #}
+<ol class="step-bar">
+  {% for label, href in steps %}
+  <li class="step {% if loop.index == current %}is-current{% endif %} {% if loop.index < current %}is-done{% endif %}">
+    {% if href and loop.index != current %}<a href="{{ href }}">{{ loop.index }}. {{ label }}</a>
+    {% else %}<span>{{ loop.index }}. {{ label }}</span>{% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{%- endmacro %}
+
+{% macro reference_range(ref) -%}
+{# 参照范围行（T03 契约）：个人基线动态计算；不足就说不足，不拿默认值冒充个性化 #}
+{% if ref and ref.state == 'active' %}
+<div class="ref-row">
+  <span class="ref-label">参照</span>
+  <span class="ref-value">个人基线 {{ ref.low|human(ref.unit, ref.metric) }}–{{ ref.high|human(ref.unit, ref.metric) }}</span>
+  <details class="ref-detail">
+    <summary>怎么算的</summary>
+    <p>近 {{ ref.window_days }} 天中位数 {{ ref.center|human(ref.unit, ref.metric) }}，带宽 ±{{ ref.threshold|human(ref.unit, ref.metric) }}
+      （{{ '2.5×MAD' if ref.method == 'median_mad' else '2.5×IQR/1.349（MAD 退化时兜底）' }}）·
+      有效 {{ ref.sample_count }}/{{ ref.window_days }} 天（{{ ref.window_start }} ~ {{ ref.window_end }}）。</p>
+  </details>
+</div>
+{% elif ref and ref.state == 'insufficient' %}
+<div class="ref-row is-insufficient">
+  <span class="ref-label">参照范围</span>
+  <span>数据不足：{{ ref.reason }}</span>
+</div>
+{% elif ref and ref.state == 'no_data' %}
+<div class="ref-row">
+  <span class="ref-label">参照范围</span>
+  <span class="muted">暂无数据</span>
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro stat_card(tile) -%}
+<a class="tile stat-card" href="{{ tile.href }}">
+  <span class="tile-label">
+    {{ tile.label }}
+    <span class="dot {{ 'ok' if tile.status == 'ok' else ('warn' if tile.status == 'insufficient' else 'none') }}"></span>
+  </span>
+  <span class="tile-value">{% if tile.value is none %}<span class="muted">—</span>{% else %}{{ tile.value|human(tile.unit, tile.metric) }}{% endif %}</span>
+  {{ reference_range(tile.reference) }}
+  <span class="tile-foot">
+    {% if tile.days %}近 7 天有效 {{ tile.days }}/7 天{% else %}近 7 天无数据{% endif %}
+    {% if tile.value is not none and tile.reference and tile.reference.state == 'active' and (tile.value < tile.reference.low or tile.value > tile.reference.high) %}
+    <span class="ref-dev">偏离基线</span>
+    {% endif %}
+  </span>
+</a>
+{%- endmacro %}
+
 {% macro chart(model) -%}
 {% if not model.has_data %}
   {{ empty_state('这段时间没有已确认数据', '待确认或缺失的数据不会进入图表。') }}

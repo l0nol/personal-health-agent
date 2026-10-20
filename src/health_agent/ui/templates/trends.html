@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import chart as render_chart, quality_line, verification_tag, empty_state %}
+{% from "_macros.html" import chart as render_chart, quality_line, verification_tag, empty_state, reference_range %}
 {% block title %}指标趋势{% endblock %}
 {% block content %}
 <header class="page-head">
@@ -36,8 +36,17 @@
 
 {% if is_range %}
 <p class="banner warn">
-  「{{ spec.display }}」是区间端点指标：图上是每天的下限与上限，<strong>没有平均值</strong>，也不会被计算。
+  「{{ spec.display }}」是区间端点指标：图上是每天的下限与上限，<strong>没有平均值</strong>，也不会被计算，因此不显示参照范围。
 </p>
+{% else %}
+<section class="card">
+  <div class="card-head">
+    <h2>参照范围</h2>
+    <span class="muted small">个人基线，近 28 天动态计算</span>
+  </div>
+  {{ reference_range(reference) }}
+  <p class="note">这是你个人的历史基线，不是通用"正常范围"；样本不足时会明确说明，不拿默认值冒充。</p>
+</section>
 {% endif %}
 
 <section class="card">

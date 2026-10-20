@@ -144,3 +144,34 @@
 - **未验证项目**：元素级 Galaxy 选型与创作者署名（采用后置门槛）、真实平板触测、reduced-motion 实机、U5 基线参数、D-1/D-3 裁决
 - **剩余风险**：R1 U5 未定导致参照范围口径浮动；R4 基线查询进渲染路径的性能（已设 50ms 预算与降级文案）
 - **状态**：待审核（等 D-1/D-2 裁决后进 T04）
+
+---
+
+### 2026-10-20 — T04 — Simple 简洁模式实现
+
+- **修改文件**（12 个，+407/−128）：
+  - `ui/app.py`：新增 `_reference()` 只读装配参照范围；三页接入；提醒页接入规则筛选；设置页接版本信息；清理重复 import / 重复 human 过滤器；`_safe_next` 文档字符串改 raw（修 T02 遗留 SyntaxWarning）
+  - `storage/alerts.py`：`list_alerts()` 增加可选 `rule_id`（默认行为不变）；新增 `list_rule_ids()`
+  - `config.py`：删除尾部 5 条逐字重复的校验
+  - 模板 8 个：`_macros.html`（+6 宏）、`index/sleep/trends/import_preview/imports/alerts/settings/base.html`
+  - `ui/static/app.css`：参照范围行、三步条、提醒双列、`--focus-ring`、触控高度 ≥44px
+- **新增文件**：
+  - `reports/T04_SIMPLE_UI_REPORT.md`（本任务报告）
+  - `docs/UI-ATTRIBUTION.md`（Galaxy 0 复制结论 + 采用登记表 + 后置七门槛）
+  - `tests/test_t04_simple_ui.py`（22 条）
+- **删除文件**：无
+- **执行命令**：
+  - `.venv/Scripts/python.exe -m pytest` → **346 passed, 1 warning, EXIT=0**（324+22）
+  - `.venv/Scripts/python.exe -m pytest tests/test_t04_simple_ui.py -q` → 22 passed
+  - `grep -h "^def test_" tests/*.py | sort | uniq -d` → 无输出
+  - 计时脚本（28 天 × 5 指标，140 条已确认，TestClient 5 次均值）：`/` 26.4ms / `/sleep` 26.0ms / `/trends` 26.0–27.7ms / `/settings` 28.3ms
+  - 真实 uvicorn + urllib/httpx：8 页 + 静态 CSS + multipart 上传预览全部 200、标记齐全、服务端日志无 ERROR/WARNING
+- **测试结果**：总数 346 / 通过 346 / 失败 0 / 跳过 0 / 警告 1（starlette 第三方弃用）/ 退出码 0
+- **代码证据**：
+  - 参照范围数据源唯一：`ui/app.py::_reference` → `analytics/baseline.py::compute_baseline`（中位数+MAD，IQR/1.349 兜底且方法名如实展示）
+  - 阈值只读无假控件：`settings.html` 阈值表 + 测试断言 6 个 `name=` 不在页面
+  - 偏离基线中性标记：`_macros.html::stat_card` 的 `.ref-dev`（CSS 取 `--text-2`，测试断言无 danger/warn）
+  - 待确认隔离不变：统计仍走 `load_points`（只读 confirmed），导入预览明示"写入后一律 pending"
+- **未验证项目**：平板真机（触控/宽度/横滚）、真实华为截图全链路、浏览器关 JS 实测、规则筛选下拉在规则增多后的分组
+- **剩余风险**：R1 首页指标卡对区间指标不显示参照行（设计如此，待用户确认是否要提示）；R2 空库时规则下拉仅"全部规则"；R3 `.mini::after` 热区相邻重叠未触屏实测
+- **状态**：待审核（通过后进 T05 Chronos 模式实现）

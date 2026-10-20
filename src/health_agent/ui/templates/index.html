@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import chart as render_chart, record_tag %}
+{% from "_macros.html" import chart as render_chart, record_tag, stat_card %}
 {% block title %}今日摘要{% endblock %}
 {% block content %}
 <header class="page-head">
@@ -12,16 +12,7 @@
 
 <section class="tiles">
   {% for tile in tiles %}
-  <a class="tile" href="{{ tile.href }}">
-    <span class="tile-label">
-      {{ tile.label }}
-      <span class="dot {{ 'ok' if tile.status == 'ok' else ('warn' if tile.status == 'insufficient' else 'none') }}"></span>
-    </span>
-    <span class="tile-value">{{ tile.value|human(tile.unit, tile.metric) }}</span>
-    <span class="tile-foot">
-      {% if tile.days %}近 7 天有效 {{ tile.days }}/7 天{% else %}近 7 天无数据{% endif %}
-    </span>
-  </a>
+  {{ stat_card(tile) }}
   {% endfor %}
 </section>
 

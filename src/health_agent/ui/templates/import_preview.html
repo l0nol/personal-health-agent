@@ -1,16 +1,18 @@
 {% extends "base.html" %}
+{% from "_macros.html" import step_bar, value_cell, metric_cell %}
 {% block title %}导入预览{% endblock %}
 {% block content %}
 <h1>导入预览</h1>
+{{ step_bar([('上传', '/imports'), ('预览（不写库）', None), ('写入（全部 pending）', None)], 2) }}
 <p class="muted">文件：{{ staged }} · 这一步还没有写入任何数据。</p>
 
 <div class="stat-row">
   <div class="stat"><span class="stat-num">{{ preview.counts().total }}</span><span class="stat-label">总行数</span></div>
-  <div class="stat"><span class="stat-num">{{ preview.counts().accepted }}</span><span class="stat-label">可直接确认</span></div>
-  <div class="stat"><span class="stat-num">{{ preview.counts().review }}</span><span class="stat-label">待复核</span></div>
-  <div class="stat"><span class="stat-num">{{ preview.counts().duplicates }}</span><span class="stat-label">重复跳过</span></div>
-  <div class="stat"><span class="stat-num">{{ preview.counts().conflicts }}</span><span class="stat-label">冲突</span></div>
+  <div class="stat"><span class="stat-num warn-text">{{ preview.counts().conflicts }}</span><span class="stat-label">冲突（需裁决）</span></div>
+  <div class="stat"><span class="stat-num warn-text">{{ preview.counts().review }}</span><span class="stat-label">待复核</span></div>
   <div class="stat"><span class="stat-num">{{ preview.counts().rejected }}</span><span class="stat-label">拒绝</span></div>
+  <div class="stat"><span class="stat-num">{{ preview.counts().duplicates }}</span><span class="stat-label">重复跳过</span></div>
+  <div class="stat"><span class="stat-num">{{ preview.counts().accepted }}</span><span class="stat-label">可直接确认</span></div>
 </div>
 
 {% if preview.conflicts %}
@@ -18,14 +20,13 @@
   <h2>冲突（{{ preview.conflicts|length }}）</h2>
   <p class="muted">同一日期同一指标已有不同值。写入后新旧并存，需在「冲突」页裁决，系统不会自动选。</p>
   <table>
-    <thead><tr><th>行</th><th>指标</th><th>日期</th><th class="num">新值</th></tr></thead>
+    <thead><tr><th>行</th><th>指标</th><th>原始值 → 归一值</th></tr></thead>
     <tbody>
     {% for item in preview.conflicts %}
       <tr>
         <td>#{{ item.row_index }}</td>
-        <td>{{ labels.get(item.record.metric_name, item.record.metric_name) }}</td>
-        <td>{{ item.record.record_date }}</td>
-        <td class="num">{{ '—' if item.record.value is none else '%g'|format(item.record.value) }} {{ item.record.unit }}</td>
+        <td>{{ metric_cell(item.record.metric_name, labels) }}</td>
+        <td>{{ value_cell(item) }}</td>
       </tr>
     {% endfor %}
     </tbody>
@@ -38,14 +39,13 @@
   <h2>待复核（{{ preview.review|length }}）</h2>
   <p class="muted">结构合法但有标记，确认前请对照原截图看一眼。</p>
   <table>
-    <thead><tr><th>行</th><th>指标</th><th>日期</th><th class="num">数值</th><th>标记</th></tr></thead>
+    <thead><tr><th>行</th><th>指标</th><th>原始值 → 归一值</th><th>标记</th></tr></thead>
     <tbody>
     {% for item in preview.review %}
       <tr>
         <td>#{{ item.row_index }}</td>
-        <td>{{ labels.get(item.record.metric_name, item.record.metric_name) }}</td>
-        <td>{{ item.record.record_date }}</td>
-        <td class="num">{{ '—' if item.record.value is none else '%g'|format(item.record.value) }} {{ item.record.unit }}</td>
+        <td>{{ metric_cell(item.record.metric_name, labels) }}</td>
+        <td>{{ value_cell(item) }}</td>
         <td>{% for flag in item.flags %}<span class="flag">{{ flag }}</span>{% endfor %}</td>
       </tr>
     {% endfor %}
@@ -57,15 +57,16 @@
 {% if preview.rejected %}
 <section class="card">
   <h2>拒绝（{{ preview.rejected|length }}）</h2>
-  <p class="muted">这些行不会入库，请修好源文件后重新导入。</p>
+  <p class="muted">这些行不会入库，请修好源文件后重新导入。错误码可直接选中复制，反馈时附上它。</p>
   <table>
-    <thead><tr><th>行</th><th>指标</th><th>错误码</th><th>原因</th></tr></thead>
+    <thead><tr><th>行</th><th>指标</th><th>原始值</th><th>错误码</th><th>原因</th></tr></thead>
     <tbody>
     {% for item in preview.rejected %}
       <tr>
         <td>#{{ item.row_index }}</td>
-        <td>{{ item.metric_name or '—' }}</td>
-        <td><code>{{ item.codes[0] }}</code></td>
+        <td>{% if item.metric_name %}{{ metric_cell(item.metric_name, labels) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="mono">{{ item.raw.get('value', '—') }}</td>
+        <td>{% for code in item.codes %}<code>{{ code }}</code>{% endfor %}</td>
         <td>{{ item.message }}</td>
       </tr>
     {% endfor %}
@@ -78,6 +79,38 @@
 <section class="card">
   <h2>重复跳过（{{ preview.duplicates|length }}）</h2>
   <p class="muted">库里已有完全相同的值，不会重复写入。</p>
+  <table>
+    <thead><tr><th>行</th><th>指标</th><th class="num">数值</th></tr></thead>
+    <tbody>
+    {% for item in preview.duplicates %}
+      <tr>
+        <td>#{{ item.row_index }}</td>
+        <td>{{ metric_cell(item.record.metric_name, labels) }}</td>
+        <td class="num">{{ value_cell(item) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% if preview.accepted %}
+<section class="card">
+  <h2>可直接确认（{{ preview.accepted|length }}）</h2>
+  <p class="muted">校验通过且无标记。写入后一律是 pending，仍要在「记录」页逐条确认才会进入趋势。</p>
+  <table>
+    <thead><tr><th>行</th><th>指标</th><th>日期</th><th>原始值 → 归一值</th></tr></thead>
+    <tbody>
+    {% for item in preview.accepted %}
+      <tr>
+        <td>#{{ item.row_index }}</td>
+        <td>{{ metric_cell(item.record.metric_name, labels) }}</td>
+        <td>{{ item.record.record_date }}</td>
+        <td>{{ value_cell(item) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
 </section>
 {% endif %}
 
@@ -87,6 +120,7 @@
   <button type="submit" {% if not preview.to_insert %}disabled{% endif %}>
     写入 {{ preview.to_insert|length }} 条（全部为 pending）
   </button>
+  <span class="muted small">写入后仍需在「记录」页确认，确认前不计入任何趋势。</span>
   <a class="link" href="/imports">取消</a>
 </form>
 {% endblock %}

@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body class="mode-{{ mode|default('simple') }}">
-{% from "_macros.html" import navlink %}
+{% from "_macros.html" import navlink, banner %}
 
 <div class="app">
   <aside class="sidebar">
@@ -43,8 +43,8 @@
   </aside>
 
   <main class="content">
-    {% if msg %}<p class="banner ok">{{ msg }}</p>{% endif %}
-    {% if error %}<p class="banner bad">{{ error }}</p>{% endif %}
+    {{ banner('ok', msg) }}
+    {{ banner('bad', error) }}
     {% block content %}{% endblock %}
     <footer class="foot">
       <p>数据只保存在本机。本工具用于趋势观察与生活习惯参考，不构成诊断或治疗建议。</p>

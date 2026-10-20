@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import chart as render_chart, quality_line, empty_state %}
+{% from "_macros.html" import chart as render_chart, quality_line, empty_state, reference_range %}
 {% block title %}睡眠分析{% endblock %}
 {% block content %}
 <header class="page-head">
@@ -19,6 +19,15 @@
   {{ quality_line(duration) }}。下面只展示原始记录，不做趋势判断。
 </p>
 {% endif %}
+
+<section class="card">
+  <div class="card-head">
+    <h2>参照范围</h2>
+    <span class="muted small">个人基线，动态计算</span>
+  </div>
+  {{ reference_range(reference) }}
+  <p class="note">与上面的"目标"是两回事：目标是期望值（{{ target_text }}），这里是你的历史基线。基线样本不够就说不够，不用通用参考值冒充。</p>
+</section>
 
 <section class="card">
   <div class="card-head">

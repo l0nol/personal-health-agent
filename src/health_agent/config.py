@@ -146,15 +146,3 @@ def validate_settings(settings: Settings) -> None:
         raise ConfigError("AI 超时必须为正数秒")
     if settings.deepseek_max_retries < 0:
         raise ConfigError("AI 重试次数不能为负")
-    if not 0 <= settings.data_gap_rate <= 1:
-        raise ConfigError("缺失率阈值必须在 0~1 之间")
-    if settings.rule_cooldown_hours < 0:
-        raise ConfigError("提醒冷却期不能为负")
-    if settings.sleep_deficit_days < 1:
-        raise ConfigError("睡眠不足天数阈值至少为 1")
-    if settings.resting_hr_shift_bpm <= 0:
-        raise ConfigError("静息心率偏移阈值必须为正数")
-    if settings.deepseek_timeout_seconds <= 0:
-        raise ConfigError("AI 超时必须为正数秒")
-    if settings.deepseek_max_retries < 0:
-        raise ConfigError("AI 重试次数不能为负")

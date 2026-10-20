@@ -18,9 +18,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from ..ai_client.summarizer import SOURCE_TEMPLATE, Narrative, peek_cached, rewrite_report
+from .. import __version__
 from ..ai_client.summarizer import SOURCE_TEMPLATE, Narrative, peek_cached, rewrite_report
 from ..analytics.aggregate import load_points, range_days, summarize, weekly_buckets
+from ..analytics.baseline import compute_baseline
 from ..analytics.quality import summarize_quality
 from ..catalog import METRICS, RANGE_BOUND_METRICS, get_metric
 from ..config import Settings, load_settings
@@ -28,9 +29,8 @@ from ..ingestion.batch import commit_import
 from ..ingestion.loader import LoadError, file_sha256, load_rows
 from ..ingestion.preview import build_preview, render_text
 from ..storage import lifecycle, preferences, repository
-from ..storage.db import connect, init_db
+from ..storage.db import connect, current_version, init_db
 from ..reports.builder import build_daily, build_weekly, latest_data_date
-from ..reports.format import format_number
 from ..reports.format import format_number
 from ..rules.engine import config_from_settings, describe_sleep_target, run as run_rules
 from .charts import BandPoint, SeriesPoint, build_band, build_bars, build_line
@@ -50,7 +50,7 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
 def _safe_next(target: str) -> str:
-    """只允许跳回本站路径。
+    r"""只允许跳回本站路径。
 
     挡住 `//evil.example`（协议相对）、`https://…`（绝对地址）与 `/\evil.example`
     （浏览器会把反斜杠归一成斜杠）这三类跳板。
@@ -76,6 +76,49 @@ def _items(rows) -> list[dict]:
     return items
 
 
+def _reference(conn, metric_name: str, end: date) -> dict:
+    """指标卡"参照范围"行的数据：个人基线动态计算。
+
+    规则（T03 设计契约，用户 2026-10-20 裁决）：
+    - 基线可用 → 中位数 ± mad_factor×离散度构成的个人区间；
+    - 样本不足 / 离散度为 0 → 只说"数据不足"并给出原因，绝不拿默认值冒充个性化；
+    - 没有任何记录 → "暂无数据"；
+    - 区间端点指标（range_bound）→ 不显示参照范围。
+
+    这里只做数据装配，判断全在 analytics.baseline；格式化交给模板的 human 过滤器。
+    """
+    if get_metric(metric_name).kind == "range_bound":
+        return {"state": "range_bound", "unit": get_metric(metric_name).unit, "metric": metric_name}
+
+    baseline = compute_baseline(conn, metric_name, end)
+    unit = get_metric(metric_name).unit
+    if baseline.status != "active":
+        state = "no_data" if baseline.sample_count == 0 else "insufficient"
+        return {
+            "state": state,
+            "reason": baseline.reason,
+            "sample_count": baseline.sample_count,
+            "min_samples": baseline.min_samples,
+            "unit": unit,
+            "metric": metric_name,
+        }
+    return {
+        "state": "active",
+        "low": baseline.center - baseline.threshold,
+        "high": baseline.center + baseline.threshold,
+        "center": baseline.center,
+        "threshold": baseline.threshold,
+        "method": baseline.method,
+        "mad_factor": baseline.mad_factor,
+        "window_start": baseline.window_start,
+        "window_end": baseline.window_end,
+        "window_days": baseline.window_days,
+        "sample_count": baseline.sample_count,
+        "unit": unit,
+        "metric": metric_name,
+    }
+
+
 def create_app(settings: Settings | None = None, *, db_path: Path | None = None) -> FastAPI:
     settings = settings or load_settings()
     path = Path(db_path) if db_path else settings.db_path
@@ -89,10 +132,6 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
     uploads_dir.mkdir(exist_ok=True)
 
     templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
-    # 统一走已经测过的人类可读格式化，避免模板里各写一套 round
-    templates.env.filters["human"] = (
-        lambda value, unit="", metric="": format_number(value, unit, metric)
-    )
     # 统一走已经测过的人类可读格式化，避免模板里各写一套 round
     templates.env.filters["human"] = (
         lambda value, unit="", metric="": format_number(value, unit, metric)
@@ -236,6 +275,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
                     "days": metric_summary.sample_days,
                     "status": metric_summary.status,
                     "href": href,
+                    "reference": _reference(conn, name, end),
                 }
             )
         sleep_chart = build_bars(_series(conn, "night_sleep_minutes", start, end),
@@ -468,15 +508,25 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
     # ---------------- 提醒 ----------------
 
     @app.get("/alerts", response_class=HTMLResponse)
-    def alerts_page(request: Request, conn=Depends(get_db), unread: str = ""):
+    def alerts_page(request: Request, conn=Depends(get_db), unread: str = "", rule: str = ""):
         unread_only = unread in {"1", "true", "on"}
-        items = alert_store.list_alerts(conn, limit=100, unread_only=unread_only)
+        rule_id = rule or None
+        items = alert_store.list_alerts(
+            conn, limit=100, unread_only=unread_only, rule_id=rule_id
+        )
+        # 区分两种空状态："从未评估"与"评估过但无新增"，文案不同（T03 §4.6）
+        ever_evaluated = (
+            conn.execute("SELECT COUNT(*) AS n FROM alerts").fetchone()["n"] > 0
+        )
         return render(
             request,
             "alerts.html",
             items=items,
             unread_only=unread_only,
+            rule_id=rule_id,
+            rule_ids=alert_store.list_rule_ids(conn),
             unread_count=alert_store.count_unread(conn),
+            ever_evaluated=ever_evaluated,
         )
 
     @app.post("/alerts/run")
@@ -643,6 +693,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             stages=stages,
             rows=[item for item in series if item.value is not None][-14:],
             target_text=describe_sleep_target(config),
+            reference=_reference(conn, "night_sleep_minutes", end),
             pending=pending,
             end_day=end.isoformat(),
         )
@@ -696,6 +747,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             summary=summary,
             is_range=is_range,
             groups=groups,
+            reference=_reference(conn, metric, end),
             end_day=end.isoformat(),
         )
 
@@ -757,6 +809,17 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request, conn=Depends(get_db)):
+        # 阈值只读展示：全部来自环境变量，本页不提供第二个修改入口（假控件禁令）
+        thresholds = [
+            ("睡眠目标", f"{settings.sleep_target_minutes} 分钟", "HEALTH_AGENT_SLEEP_TARGET_MIN"),
+            ("基线窗口", f"{settings.baseline_window_days} 天", "HEALTH_AGENT_BASELINE_WINDOW_DAYS"),
+            ("基线最少样本", f"{settings.baseline_min_samples} 天", "HEALTH_AGENT_BASELINE_MIN_SAMPLES"),
+            ("基线偏离倍数", f"{settings.baseline_mad_factor:g} × MAD", "HEALTH_AGENT_BASELINE_MAD_FACTOR"),
+            ("睡眠不足天数", f"{settings.sleep_deficit_days} 天", "HEALTH_AGENT_SLEEP_DEFICIT_DAYS"),
+            ("静息心率偏移", f"{settings.resting_hr_shift_bpm:g} 次/分", "HEALTH_AGENT_RESTING_HR_SHIFT_BPM"),
+            ("数据缺失率", f"{settings.data_gap_rate:g}", "HEALTH_AGENT_DATA_GAP_RATE"),
+            ("提醒冷却期", f"{settings.rule_cooldown_hours} 小时", "HEALTH_AGENT_RULE_COOLDOWN_HOURS"),
+        ]
         return render(
             request,
             "settings.html",
@@ -766,6 +829,9 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             lan_enabled=settings.lan_enabled,
             sleep_target=describe_sleep_target(config_from_settings(settings)),
             mode=ui_mode(conn),
+            thresholds=thresholds,
+            app_version=__version__,
+            schema_version=current_version(conn),
             db_path=str(request.app.state.db_path),
         )
 

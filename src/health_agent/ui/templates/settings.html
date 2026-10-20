@@ -19,6 +19,15 @@
 </section>
 
 <section class="card">
+  <h2>睡眠目标</h2>
+  <p>当前生效：{{ sleep_target }}</p>
+  <p class="hint">
+    通过环境变量 <code>HEALTH_AGENT_SLEEP_TARGET_MIN</code> 修改（单位：分钟），改完重启生效。
+    本页只显示当前生效值，不提供第二个修改入口，避免两处配置打架。
+  </p>
+</section>
+
+<section class="card">
   <h2>生活背景</h2>
   <form method="post" action="/settings">
     <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -53,23 +62,35 @@
 </section>
 
 <section class="card">
-  <h2>运行信息</h2>
-  <dl class="kv">
-    <dt>数据库</dt><dd>{{ db_path }}</dd>
-    <dt>局域网访问</dt><dd>{{ '开启（需要密码）' if lan_enabled else '关闭（仅本机）' }}</dd>
-    <dt>AI 分析</dt><dd>{{ '已配置密钥' if ai_enabled else '未配置，简报将使用本地模板文案' }}</dd>
-    <dt>睡眠目标</dt><dd>{{ sleep_target }}</dd>
-  </dl>
-  <p class="hint">
-    睡眠目标通过环境变量 <code>HEALTH_AGENT_SLEEP_TARGET_MIN</code> 修改（单位：分钟），改完重启生效。
-    本页只显示当前生效值，不提供第二个修改入口，避免两处配置打架。
-  </p>
-  <p class="hint">密钥只在环境变量里配置，不会出现在本页或日志中。</p>
+  <h2>提醒阈值</h2>
+  <p class="muted">全部来自环境变量，本页只读。不放看起来能改的控件——改了不生效比不能改更糟。</p>
+  <table class="table">
+    <thead><tr><th>阈值</th><th>当前生效值</th><th>环境变量</th></tr></thead>
+    <tbody>
+      {% for name, value, env in thresholds %}
+      <tr><td>{{ name }}</td><td class="num">{{ value }}</td><td><code>{{ env }}</code></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </section>
 
 <section class="card">
-  <h2>数据</h2>
+  <h2>数据与隐私</h2>
   <p><a href="/export.csv">导出全部记录 CSV</a> · <a href="/export.json">导出 JSON</a></p>
+  <p class="hint">备份 / 恢复：命令行 <code>python -m health_agent.cli backup</code>（恢复加 <code>--force</code>，替换前会先留 <code>.bak</code>），步骤见 <code>docs/02-runbook.md</code> §5。本页不放一键备份按钮——备份要写整个数据目录，误触代价比多点几步大。</p>
+  <p class="hint">数据只保存在本机（{{ db_path }}），不上传任何服务器。配置了 AI 密钥时，也只有已算好的摘要会发给模型，不含记录 ID 与截图。</p>
+  <p class="hint">密钥只在环境变量里配置，不会出现在本页或日志中。</p>
   <p class="hint">删除整个数据库请直接删除数据目录下的 health.db 文件（应用需先停止）。</p>
+</section>
+
+<section class="card">
+  <h2>关于</h2>
+  <dl class="kv">
+    <dt>应用版本</dt><dd>{{ app_version }}</dd>
+    <dt>数据库 schema</dt><dd>v{{ schema_version }}</dd>
+    <dt>数据库</dt><dd>{{ db_path }}</dd>
+    <dt>局域网访问</dt><dd>{{ '开启（需要密码）' if lan_enabled else '关闭（仅本机）' }}</dd>
+    <dt>AI 分析</dt><dd>{{ '已配置密钥' if ai_enabled else '未配置，简报将使用本地模板文案' }}</dd>
+  </dl>
 </section>
 {% endblock %}
