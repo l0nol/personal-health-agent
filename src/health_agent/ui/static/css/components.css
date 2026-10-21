@@ -330,3 +330,39 @@ details summary { cursor: pointer; color: var(--primary); }
   .guidance-facts li { grid-template-columns: 1fr; gap: 2px; }
   .fact-coverage { white-space: normal; }
 }
+
+/* 快捷问题 / 快捷动作的胶囊组。零 JS：就是一组链接，点了只是把文字带过去。 */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.chips .chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.3;
+  text-decoration: none;
+}
+.chips .chip:hover { background: var(--primary-soft); text-decoration: none; }
+.chips .chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+@media (max-width: 767px) {
+  .chips .chip { min-height: 44px; }
+}
+
+/* 问答页的输入框：移动端 16px 起，避免 iOS 聚焦时自动放大整页 */
+textarea[name="question"] {
+  width: 100%;
+  min-height: 84px;
+  font-size: 16px;
+  line-height: 1.7;
+  resize: vertical;
+}

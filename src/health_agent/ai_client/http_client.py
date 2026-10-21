@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 
 import httpx
@@ -17,6 +18,68 @@ from .base import LLMError, LLMResult
 
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_MAX_RETRIES = 2
+
+#: 服务商回显的细节里可能带密钥片段（有些中转站会把 Authorization 原样带回来），
+#: 上页面前先把 `sk-****` 之类的片段抹掉——页面是会被截图、被转发的地方。
+_SECRET_PATTERN = re.compile(r"(sk-|Bearer\s+)[A-Za-z0-9_\-]{4,}", re.IGNORECASE)
+
+
+def _parse_model_ids(data: object) -> list[str]:
+    """从两种常见形态里取出模型 id，去重、保持服务商给的顺序。"""
+    if not isinstance(data, dict):
+        return []
+    raw: object = data.get("data")
+    if not isinstance(raw, list):
+        raw = data.get("models")
+    if not isinstance(raw, list):
+        return []
+
+    seen: set[str] = set()
+    ids: list[str] = []
+    for item in raw:
+        name = ""
+        if isinstance(item, str):
+            name = item
+        elif isinstance(item, dict):
+            for key in ("id", "name", "model"):
+                value = item.get(key)
+                if isinstance(value, str) and value.strip():
+                    name = value.strip()
+                    break
+        if name and name not in seen:
+            seen.add(name)
+            ids.append(name)
+    return ids
+
+
+def _clean_detail(text: str, limit: int = 200) -> str:
+    """截断并抹掉像密钥的片段。只用于"翻译错误"，不做任何逻辑判断。"""
+    value = _SECRET_PATTERN.sub(r"\1<已隐藏>", str(text or "")).strip()
+    value = " ".join(value.split())
+    return value[:limit]
+
+
+def _error_detail(response: httpx.Response) -> str:
+    """从错误响应里取一句人话：`error.message` / `message` / `detail` 都认。"""
+    try:
+        data = response.json()
+    except ValueError:
+        return _clean_detail(response.text)
+    if not isinstance(data, dict):
+        return ""
+    error = data.get("error")
+    if isinstance(error, dict):
+        for key in ("message", "msg", "detail", "code"):
+            value = error.get(key)
+            if isinstance(value, str) and value.strip():
+                return _clean_detail(value)
+    if isinstance(error, str) and error.strip():
+        return _clean_detail(error)
+    for key in ("message", "msg", "detail"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return _clean_detail(value)
+    return ""
 
 
 class ChatCompletionClient:
@@ -52,6 +115,39 @@ class ChatCompletionClient:
         with httpx.Client(timeout=self._timeout, transport=self._transport) as client:
             return client.post(url, json=payload, headers=self._headers())
 
+    def list_models(self) -> list[str]:
+        """`GET {base_url}/models` —— 这个密钥在这个地址到底能用哪些模型。
+
+        很多"模型不存在"其实不是模型名写错，而是**地址和密钥根本不配套**
+        （拿 A 家的密钥去 B 家的地址）。列出可用模型是最快把这两件事对上号的办法。
+
+        OpenAI 兼容形态返回 `{"data": [{"id": "..."}]}`；Ollama 原生形态返回
+        `{"models": [{"name": "..."}]}`，两种都认。失败一律抛 LLMError。
+        """
+        url = f"{self._base_url}/models"
+        try:
+            with httpx.Client(timeout=self._timeout, transport=self._transport) as client:
+                response = client.get(url, headers=self._headers())
+        except httpx.TimeoutException as exc:
+            raise LLMError("timeout", "请求超时") from exc
+        except httpx.HTTPError as exc:
+            raise LLMError("network", f"网络错误：{type(exc).__name__}") from exc
+
+        if response.status_code >= 400:
+            raise LLMError(
+                "http",
+                f"请求被拒绝 {response.status_code}",
+                status_code=response.status_code,
+                detail=_error_detail(response),
+            )
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise LLMError("http", "响应不是合法 JSON") from exc
+
+        return _parse_model_ids(data)
+
     def complete(self, *, system: str, user: str, max_tokens: int = 600) -> LLMResult:
         url = f"{self._base_url}/chat/completions"
         payload = {
@@ -82,7 +178,10 @@ class ChatCompletionClient:
                 elif response.status_code >= 400:
                     # 4xx 是配置或鉴权问题，重试没有意义
                     raise LLMError(
-                        "http", f"请求被拒绝 {response.status_code}", status_code=response.status_code
+                        "http",
+                        f"请求被拒绝 {response.status_code}",
+                        status_code=response.status_code,
+                        detail=_error_detail(response),
                     )
                 else:
                     return self._parse(response, latency_ms)

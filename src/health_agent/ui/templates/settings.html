@@ -27,7 +27,7 @@
   </p>
 </section>
 
-<section class="card">
+<section class="card" id="ai">
   <h2>AI 分析接口</h2>
   <p class="muted">
     简报里"把数据讲成人话"那一步可以交给大模型。不配置也完全能用——系统会退回本地文案，
@@ -82,12 +82,35 @@
       地址只写域名（如 <code>api.deepseek.com/v1</code>）也行，会自动补上 <code>https://</code>。
       填完可以先点「测试连接」试一次——它只发一句"回复两个字"，不保存、不写任何记录、不产生分析。
     </p>
+    <p class="hint">
+      <strong>模型名不确定就点「保存并拉取可用模型」</strong>：它会先保存当前填的地址与密钥，
+      再把该密钥实际能用的模型列出来供你挑。很多"模型不存在"其实是地址与密钥不配套，
+      列表一出来就看得明白。
+    </p>
 
     <div class="form-actions">
       <button type="submit" name="action" value="save">保存</button>
       <button type="submit" name="action" value="test" class="btn secondary">测试连接（不保存）</button>
+      <button type="submit" name="action" value="models" class="btn secondary">保存并拉取可用模型</button>
     </div>
   </form>
+
+  {% if ai_models %}
+  <div class="banner {{ 'warn' if ai_model_missing else 'ok' }}">
+    {{ ai_models_note }}
+  </div>
+  <form method="post" action="/settings/ai" class="form-actions">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="preset" value="{{ ai_preset }}">
+    <input type="hidden" name="base_url" value="{{ ai_base_url }}">
+    <select id="ai-model-pick" name="model" aria-label="可用模型">
+      {% for name in ai_models %}
+      <option value="{{ name }}" {% if name == ai_model %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" name="action" value="use_model">用这个模型并保存</button>
+  </form>
+  {% endif %}
 
   <details class="ref-detail">
     <summary>各服务商参考地址（可能随服务商调整，以官方文档为准）</summary>

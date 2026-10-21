@@ -34,21 +34,21 @@ AI_PRESETS: tuple[dict[str, str], ...] = (
         "label": "通义千问（DashScope 兼容模式）",
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "model": "qwen-plus",
-        "hint": "阿里云百炼的 OpenAI 兼容入口",
+        "hint": "阿里云百炼的 OpenAI 兼容入口；另有 qwen-turbo / qwen-max",
     },
     {
         "key": "moonshot",
         "label": "Moonshot / Kimi",
         "base_url": "https://api.moonshot.cn/v1",
         "model": "moonshot-v1-8k",
-        "hint": "",
+        "hint": "老模型仍可用；新模型（kimi 系列）以「拉取可用模型」的结果为准",
     },
     {
         "key": "zhipu",
         "label": "智谱 GLM",
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
         "model": "glm-4-flash",
-        "hint": "",
+        "hint": "glm-4-flash 是免费档；另有 glm-4-air / glm-4-plus",
     },
     {
         "key": "openai",
@@ -62,7 +62,7 @@ AI_PRESETS: tuple[dict[str, str], ...] = (
         "label": "本地 Ollama（无需密钥）",
         "base_url": "http://127.0.0.1:11434/v1",
         "model": "qwen2.5:7b",
-        "hint": "本机跑模型；密钥随意填一个非空值即可通过校验",
+        "hint": "本机跑模型：先 `ollama pull qwen2.5:7b` 下载，再点「拉取可用模型」看本机到底有哪些",
     },
 )
 

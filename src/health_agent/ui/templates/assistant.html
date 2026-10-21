@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}AI 助手{% endblock %}
+{% block content %}
+<h1>AI 助手</h1>
+<p class="sub">
+  想问什么就写什么。助手只看得到<strong>程序已经算好的数字</strong>，负责把它们讲顺，
+  不做诊断、不给治疗方案、也不预测风险。
+</p>
+
+{% if not ai_enabled %}
+<p class="banner warn">
+  还没有配置 AI 接口，下面的回答会用「本地整理」——直接把数字念给你听，不做解读。
+  想让它说人话，去 <a href="/settings#ai">设置 → AI 分析接口</a> 填一个密钥即可。
+</p>
+{% endif %}
+
+<section class="card">
+  <h2>提问</h2>
+  <form method="post" action="/assistant">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>你的问题
+      <textarea name="question" rows="3" maxlength="{{ max_chars }}"
+                placeholder="例如：我这周睡得够吗？最近哪天最短？">{{ question }}</textarea>
+    </label>
+    <div class="form-actions">
+      <button type="submit">问一下</button>
+      <a class="link" href="/assistant">清空</a>
+    </div>
+  </form>
+
+  <p class="hint">不确定问什么？点一个就行（只会填进输入框，不会自动发送）：</p>
+  <div class="chips">
+    {% for item in quick_questions %}
+    <a class="chip" href="/assistant?q={{ item|urlencode }}">{{ item }}</a>
+    {% endfor %}
+  </div>
+</section>
+
+{% if answer %}
+<section class="card">
+  <h2>回答</h2>
+  <p class="muted small">你问：{{ answer.question }}</p>
+  <p class="report-text">{{ answer.text }}</p>
+
+  {% if answer.is_ai %}
+  <p class="hint">
+    AI 生成 · 模型 <code>{{ answer.model }}</code>{% if answer.latency_ms is not none %} · {{ answer.latency_ms }} ms{% endif %}
+    {% if answer.input_tokens is not none and answer.output_tokens is not none %}
+    · 用量 {{ answer.input_tokens }}+{{ answer.output_tokens }} tokens
+    {% endif %}
+  </p>
+  <p class="hint warn">
+    回答里的数字都来自本地统计；文字由模型组织，可能有措辞偏差。
+    涉及身体不适请以医生意见为准——这个页面不做诊断。
+  </p>
+  {% else %}
+  <p class="hint">{{ answer.note }}</p>
+  <p class="hint">这份回答完全由本地规则生成，没有发任何请求，也没有产生费用。</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>它能回答什么</h2>
+  <dl class="kv">
+    <dt>能做的</dt>
+    <dd>把近 7 天的睡眠、心率、压力、训练等数字讲清楚；指出哪些指标数据不足；解释某天为什么和平时不一样。</dd>
+    <dt>不能做的</dt>
+    <dd>诊断疾病、推荐药物或治疗方案、预测发病风险、评价某位医生或某种疗法的好坏。</dd>
+    <dt>看不到的</dt>
+    <dd>你的原始截图、记录编号、账号信息。发出去的只有聚合后的数字摘要。</dd>
+  </dl>
+  <p class="hint">
+    每次提问都是一次独立的网络请求，按服务商的价格计费；只有点「问一下」才会发出去。
+    回答只保存在本次运行的内存里，重启服务后清空，也不会写进数据库。
+  </p>
+</section>
+{% endblock %}

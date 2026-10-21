@@ -9,6 +9,7 @@ from __future__ import annotations
 import hmac
 import json
 import time
+import uuid
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import quote
@@ -19,7 +20,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import __version__
-from ..ai_client.probe import probe_connection
+from ..ai_client.assistant import (
+    MAX_QUESTION_CHARS as ASSISTANT_MAX_QUESTION_CHARS,
+)
+from ..ai_client.assistant import (
+    QUICK_QUESTIONS,
+    Answer,
+    ask as assistant_ask,
+)
+from ..ai_client.probe import fetch_models, probe_connection
 from ..ai_client.summarizer import SOURCE_TEMPLATE, Narrative, peek_cached, rewrite_report
 from ..analytics.aggregate import load_points, range_days, summarize, weekly_buckets
 from ..analytics.quality import summarize_quality
@@ -61,9 +70,15 @@ from .context import (
     metric_labels,
     reference,
 )
-from .pages import DIAL_PAGES, link_grid_pages, nav_groups
+from .pages import DIAL_PAGES, link_grid_pages, nav_groups, page_by_key
 
 METRICS_BY_NAME = {metric.name: metric for metric in METRICS}
+
+#: 助手快捷动作要跳的页面。路径统一从 pages.py 取，
+#: 免得再加一页时"导航里有、助手按钮里还是旧地址"。
+_ASSISTANT_HREFS = {
+    key: page_by_key(key).href for key in ("assistant", "training", "sleep", "alerts")
+}
 
 BASE_DIR = Path(__file__).resolve().parent
 ALLOWED_SUFFIXES = {".json", ".csv", ".tsv"}
@@ -263,7 +278,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
                 sectors=chronos_sectors(
                     conn, tiles, counts, conflicts, unread_alerts, end, guidance=home_guidance
                 ),
-                shortcuts=assistant_shortcuts(home_guidance, {"training": "/training", "sleep": "/sleep", "alerts": "/alerts"}),
+                shortcuts=assistant_shortcuts(home_guidance, _ASSISTANT_HREFS),
                 selected="",
                 end_day=end.isoformat(),
             )
@@ -615,6 +630,42 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             return go(f"/reports?{query}&error=" + quote(f"AI 调用失败（{reason}），已保留本地文案"))
         return go(f"/reports?{query}&msg=" + quote("已用 AI 改写，结果已缓存"))
 
+    # ---------------- AI 助手（自由提问） ----------------
+
+    #: 最近几次回答。放内存里而不是建表：
+    #: 一次问答的结果没有长期价值，也包含健康描述，落库反而多一处要清理的隐私面。
+    #: 重启就没了，页面会明说这一点。
+    answers: dict[str, Answer] = {}
+
+    @app.get("/assistant", response_class=HTMLResponse)
+    def assistant_page(request: Request, q: str = "", a: str = ""):
+        answer = answers.get(a) if a else None
+        return render(
+            request,
+            "assistant.html",
+            question=q[:ASSISTANT_MAX_QUESTION_CHARS],
+            answer=answer,
+            quick_questions=QUICK_QUESTIONS,
+            ai_enabled=settings.ai_enabled,
+            ai_model=settings.ai_model,
+            ai_key_tail=settings.ai_key_tail,
+            max_chars=ASSISTANT_MAX_QUESTION_CHARS,
+        )
+
+    @app.post("/assistant")
+    def assistant_submit(request: Request, conn=Depends(get_db), question: str = Form("")):
+        """显式提交才花钱（规格 §7）：GET 打开页面永远零网络。"""
+        text = (question or "").strip()
+        if not text:
+            return go("/assistant?error=" + quote("先写一句想问的，例如「我这周睡得怎么样」"))
+        result = assistant_ask(conn, text, settings=settings)
+        token = uuid.uuid4().hex[:12]
+        answers[token] = result
+        # 只留最近 20 条：内存里堆答案没有意义，也没有地方给用户清理
+        while len(answers) > 20:
+            answers.pop(next(iter(answers)))
+        return go(f"/assistant?a={token}")
+
     # ---------------- 睡眠分析 / 指标趋势 / 时钟模式（只读） ----------------
 
     def _series(conn, metric: str, start: date, end: date):
@@ -875,9 +926,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             sectors=chronos_sectors(
                 conn, tiles, counts, conflicts, unread, end, guidance=dial_guidance
             ),
-            shortcuts=assistant_shortcuts(
-                dial_guidance, {"training": "/training", "sleep": "/sleep", "alerts": "/alerts"}
-            ),
+            shortcuts=assistant_shortcuts(dial_guidance, _ASSISTANT_HREFS),
             selected=s if s in valid else "",
             counts=counts,
             conflicts=conflicts,
@@ -900,8 +949,12 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
 
     # ---------------- 设置 ----------------
 
-    @app.get("/settings", response_class=HTMLResponse)
-    def settings_page(request: Request, conn=Depends(get_db)):
+    def _settings_context(request: Request, conn, **overrides) -> dict:
+        """设置页的全部上下文。
+
+        抽成函数是因为「拉取可用模型」要**原地重渲染**这一页（零 JS 没法局部刷新），
+        重渲染必须与首次打开给同一套字段，否则模板里少一个变量就 500。
+        """
         # 阈值只读展示：全部来自环境变量，本页不提供第二个修改入口（假控件禁令）
         thresholds = [
             ("睡眠目标", f"{settings.sleep_target_minutes} 分钟", "HEALTH_AGENT_SLEEP_TARGET_MIN"),
@@ -913,28 +966,35 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             ("数据缺失率", f"{settings.data_gap_rate:g}", "HEALTH_AGENT_DATA_GAP_RATE"),
             ("提醒冷却期", f"{settings.rule_cooldown_hours} 小时", "HEALTH_AGENT_RULE_COOLDOWN_HOURS"),
         ]
-        return render(
-            request,
-            "settings.html",
-            values=preferences.get_settings(conn),
-            keys=preferences.ALLOWED_KEYS,
-            ai_enabled=settings.ai_enabled,
-            ai_presets=AI_PRESETS,
-            ai_preset=active_preset_key(settings),
-            ai_key_tail=settings.ai_key_tail,
-            ai_base_url=settings.ai_base_url,
-            ai_model=settings.ai_model,
-            ai_timeout=int(settings.ai_timeout_seconds),
-            ai_env_path=str(settings.env_path),
-            ai_shadowed=ai_env_override_keys(),
-            lan_enabled=settings.lan_enabled,
-            sleep_target=describe_sleep_target(config_from_settings(settings)),
-            mode=ui_mode(conn),
-            thresholds=thresholds,
-            app_version=__version__,
-            schema_version=current_version(conn),
-            db_path=str(request.app.state.db_path),
-        )
+        context = {
+            "values": preferences.get_settings(conn),
+            "keys": preferences.ALLOWED_KEYS,
+            "ai_enabled": settings.ai_enabled,
+            "ai_presets": AI_PRESETS,
+            "ai_preset": active_preset_key(settings),
+            "ai_key_tail": settings.ai_key_tail,
+            "ai_base_url": settings.ai_base_url,
+            "ai_model": settings.ai_model,
+            "ai_timeout": int(settings.ai_timeout_seconds),
+            "ai_env_path": str(settings.env_path),
+            "ai_shadowed": ai_env_override_keys(),
+            "ai_models": [],
+            "ai_models_note": "",
+            "ai_model_missing": False,
+            "lan_enabled": settings.lan_enabled,
+            "sleep_target": describe_sleep_target(config_from_settings(settings)),
+            "mode": ui_mode(conn),
+            "thresholds": thresholds,
+            "app_version": __version__,
+            "schema_version": current_version(conn),
+            "db_path": str(request.app.state.db_path),
+        }
+        context.update(overrides)
+        return context
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_page(request: Request, conn=Depends(get_db)):
+        return render(request, "settings.html", **_settings_context(request, conn))
 
     @app.post("/settings")
     async def settings_save(request: Request, conn=Depends(get_db)):
@@ -969,6 +1029,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
     @app.post("/settings/ai")
     def settings_ai_save(
         request: Request,
+        conn=Depends(get_db),
         action: str = Form("save"),
         preset: str = Form("custom"),
         api_key: str = Form(""),
@@ -997,6 +1058,21 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
         if norm_note:
             note = f"{note}，{norm_note}"
         key = api_key.strip()
+
+        def _persist(api_key_value: str | None) -> str | None:
+            """写 `.env` 并重新装载。返回错误文案，成功返回 None。"""
+            nonlocal settings
+            try:
+                save_ai_config(settings.env_path, api_key=api_key_value, base_url=url, model=name)
+            except OSError as exc:
+                return f"写入 {settings.env_path.name} 失败：{type(exc).__name__}"
+            try:
+                reloaded = load_settings(project_root=settings.env_path.parent)
+            except ConfigError as exc:
+                return f"配置已写入，但重新装载失败：{exc}"
+            settings = reloaded
+            request.app.state.settings = reloaded
+            return None
 
         # 报错要说到点子上：空地址、缺协议头、把密钥填错格子，是三种不同的问题，
         # 用同一句"必须以 http 开头"回过去，用户只会更困惑（2026-10-21 真实反馈）。
@@ -1030,6 +1106,58 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
                 text += "。确认无误后点「保存」写入配置。"
             return go(("/settings?msg=" if result.ok else "/settings?error=") + quote(text))
 
+        if action == "models":
+            # 「保存并拉取可用模型」：先把地址与密钥存下来（拉列表要用），再列模型。
+            # 原地重渲染而不是跳转：零 JS 没法局部更新，重渲染能保住刚填的地址。
+            problem_text = _persist("" if clear_key else (key or None))
+            if problem_text:
+                return go("/settings?error=" + quote(problem_text))
+            found = fetch_models(
+                api_key=settings.ai_api_key or "",
+                base_url=url,
+                timeout=min(max(settings.ai_timeout_seconds, 5.0), 20.0),
+            )
+            if not found:
+                return go("/settings?error=" + quote(f"拉取可用模型失败：{found.message}"))
+            missing = name not in found.models
+            if missing:
+                note = (
+                    f"当前模型「{name}」不在这个密钥的可用列表里（{found.message}），"
+                    f"从下面选一个替换，例如 {found.models[0]}。"
+                )
+            else:
+                note = f"{found.message}；当前模型「{name}」在列表里。"
+            return render(
+                request,
+                "settings.html",
+                **_settings_context(
+                    request,
+                    conn,
+                    ai_models=found.models,
+                    ai_models_note=note,
+                    ai_model_missing=missing,
+                ),
+            )
+
+        if action == "use_model":
+            # 列表里的模型是现成的，密钥在「拉取」那一步已经存好，这里只换模型名
+            problem_text = _persist(None)
+            if problem_text:
+                return go("/settings?error=" + quote(problem_text))
+            result = probe_connection(
+                api_key=settings.ai_api_key or "",
+                base_url=url,
+                model=name,
+                timeout=min(max(settings.ai_timeout_seconds, 5.0), 20.0),
+            )
+            if result.ok:
+                latency = f"，{result.latency_ms} ms" if result.latency_ms is not None else ""
+                return go("/settings?msg=" + quote(f"已换成模型 {name}，试连成功{latency}"))
+            return go(
+                "/settings?error="
+                + quote(f"已保存模型 {name}，但试连失败：{result.message}")
+            )
+
         if clear_key:
             new_key: str | None = ""
         elif key:
@@ -1037,21 +1165,9 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
         else:
             new_key = None
 
-        try:
-            save_ai_config(settings.env_path, api_key=new_key, base_url=url, model=name)
-        except OSError as exc:
-            return go(
-                "/settings?error="
-                + quote(f"写入 {settings.env_path.name} 失败：{type(exc).__name__}")
-            )
-
-        try:
-            reloaded = load_settings(project_root=settings.env_path.parent)
-        except ConfigError as exc:
-            return go("/settings?error=" + quote(f"配置已写入，但重新装载失败：{exc}"))
-
-        settings = reloaded
-        request.app.state.settings = reloaded
+        problem_text = _persist(new_key)
+        if problem_text:
+            return go("/settings?error=" + quote(problem_text))
 
         message = "已保存并立即生效（" + note + "）"
         if new_key is None:

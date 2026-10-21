@@ -31,12 +31,25 @@ class LLMResult:
 
 
 class LLMError(Exception):
-    """调用失败。kind 用于记日志，不用于给用户看细节。"""
+    """调用失败。kind 用于记日志，不用于给用户看细节。
 
-    def __init__(self, kind: str, message: str, *, status_code: int | None = None) -> None:
+    `detail` 是服务商自己说的一句话（截断、去掉任何像密钥的片段），
+    只用来把"HTTP 400"翻译成"模型不存在"这种能照着改的话；
+    它不进日志、不上报，也不参与任何判断。
+    """
+
+    def __init__(
+        self,
+        kind: str,
+        message: str,
+        *,
+        status_code: int | None = None,
+        detail: str = "",
+    ) -> None:
         super().__init__(message)
         self.kind = kind
         self.status_code = status_code
+        self.detail = detail
 
 
 class LLMClient(Protocol):

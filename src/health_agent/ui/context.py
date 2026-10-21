@@ -296,9 +296,12 @@ def assistant_shortcuts(guidance: Guidance | None, hrefs: dict[str, str]) -> lis
     """助手快捷动作：只做"解释 + 导航 + 预填"，不写库、不诊断。
 
     预填一律走 GET 参数落到 `/training` 表单，用户确认后才提交（POST + CSRF）。
+    第一项固定是"去自由提问"入口：助手面板本身没有输入框（零 JS 做不了原地问答），
+    所以必须有一步跳到 `/assistant`，否则用户会以为它只能点这三个按钮。
     """
     training = hrefs.get("training", "/training")
     items: list[dict[str, str]] = [
+        {"label": "去提个自定义问题", "href": hrefs.get("assistant", "/assistant")},
         {"label": "今天适合练什么？", "href": training + "?from=assistant&focus=advice"},
         {"label": "打开睡眠页", "href": hrefs.get("sleep", "/sleep")},
         {"label": "看看提醒", "href": hrefs.get("alerts", "/alerts")},
@@ -307,7 +310,7 @@ def assistant_shortcuts(guidance: Guidance | None, hrefs: dict[str, str]) -> lis
         return items
     if guidance.category == "rest":
         items.insert(
-            1,
+            2,
             {
                 "label": "记录今天的状态",
                 "href": training + "?from=assistant&focus=feedback#feedback",
@@ -315,7 +318,7 @@ def assistant_shortcuts(guidance: Guidance | None, hrefs: dict[str, str]) -> lis
         )
     elif guidance.category == "light_activity":
         items.insert(
-            1,
+            2,
             {
                 "label": "记一次轻松活动（预填）",
                 "href": training + "?from=assistant&type=walking&duration=25&content=轻松步行",
@@ -324,7 +327,7 @@ def assistant_shortcuts(guidance: Guidance | None, hrefs: dict[str, str]) -> lis
     elif guidance.category == "regular_training":
         budget = ""
         items.insert(
-            1,
+            2,
             {
                 "label": "记一次训练（预填）",
                 "href": training + f"?from=assistant&type=strength&duration={budget or 40}",

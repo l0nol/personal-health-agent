@@ -325,3 +325,45 @@
 - **未验证**：真实密钥的端到端连通（无可用密钥）；Ollama 本地实例；各厂商非 OpenAI 兼容的私有协议
 - **剩余风险**：`ai_base_url` 未强制 https（保留 `http://127.0.0.1` 本地代理的合法用法，沿用 T02 裁决）
 - **状态**：待审核
+
+### 2026-10-21 — T12/补丁 — 模型列表、AI 助手自由提问、三条数据裁决
+
+- **修改文件**：
+  - `src/health_agent/ai_client/base.py`：`LLMError` 增加 `detail`（服务商原话，截断 200 字）
+  - `src/health_agent/ai_client/http_client.py`：4xx 带出 `error.message`；新增 `list_models()`；
+    `_clean_detail()` 抹掉 `sk-…/Bearer …` 片段；`_parse_model_ids()` 兼容 `data[].id` 与 `models[].name`
+  - `src/health_agent/ai_client/probe.py`：新增 `fetch_models()` / `ModelsResult`；
+    `_describe()` 识别 "model not exist / 模型不存在" 并点明模型名
+  - `src/health_agent/config.py`：六个预设的 `hint` 补充可用模型与 `ollama pull` 提示
+  - `src/health_agent/ui/app.py`：`/settings` 上下文抽成 `_settings_context()`（拉列表要原地重渲染）；
+    `/settings/ai` 新增 `action=models` 与 `action=use_model`，写盘统一走 `_persist()`；
+    新增 `/assistant` GET/POST，答案存内存（上限 20 条）
+  - `src/health_agent/ui/pages.py`：新增 `Page("assistant", "/assistant", "AI 助手", "分析")`
+  - `src/health_agent/ui/context.py`：助手快捷动作第一项改为「去提个自定义问题」，路径从注册表取
+  - `src/health_agent/ui/templates/settings.html`：「保存并拉取可用模型」按钮 + 模型下拉表单；AI 卡片加 `id="ai"`
+  - `src/health_agent/ui/templates/chronos.html`：助手面板脚注改为指向自由提问
+  - `src/health_agent/ui/static/css/components.css`：`.chips/.chip` 与问答输入框样式（移动端 ≥44px / 16px）
+  - `TASK_STATUS.md`、本文件
+- **新增文件**：
+  - `src/health_agent/ai_client/assistant.py`（自由提问：上下文、提示词、`ask()`、调用日志）
+  - `src/health_agent/ui/templates/assistant.html`
+  - `tests/test_ai_assistant.py`（18 条）
+  - `_upload/testdata-20261021/records-week2-20261021.json`（第二组睡眠周数据，2 条）
+- **删除文件**：无
+- **执行命令**：
+  - `.venv/Scripts/python.exe -m pytest` → **535 passed / 1 skipped**
+  - `cli backup` → `data/backup/health-20261021-203009.zip`
+  - `cli import records-week2-20261021.json --commit` → 批次 `1541ae37`，2 条 pending
+- **数据裁决（用户授权自行决定）**：
+  - ① 6 条被我误确认的记录改回 `pending`（`training_index 3.6`、`vo2max 34`、`running_index 21.9`、
+    `sleep_avg_hr_bpm 61`、`sleep_breathing_quality_score 98`、`weight_kg 79.3`，均 2026-10-20）
+  - ② 14 条周均值**不写入**：`deep_sleep/light_sleep/rem_sleep` 等注册表只允许 `day`，
+    周均值是滚动窗口，混进日趋势会污染基线与缺口判断
+  - ③ 第二组睡眠周数据写入 2 条 `week` 记录（夜间睡眠 301、小睡 138），
+    窗口 `2026-10-19~2026-10-25` 为推断值，`pending` 待核对
+- **测试结果**：535 passed / 1 skipped / 0 failed
+- **代码证据**：`pytest` 全绿；对运行中服务做端到端验证——`/settings` 含「保存并拉取可用模型」、
+  `/assistant` 含输入框、POST 后 303 到 `/assistant?a=…` 且答案为本地整理
+- **未验证项目**：真实密钥下 `GET /models` 的返回（无可用密钥）、平板/手机真机
+- **剩余风险**：第二组周数据的窗口是推断值；`pending` 状态下不参与任何统计，确认前不影响结论
+- **状态**：待审核

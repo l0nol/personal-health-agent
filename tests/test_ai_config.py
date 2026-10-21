@@ -580,3 +580,214 @@ def test_key_only_submission_uses_the_preset(tmp_path):
     assert settings.ai_api_key == "sk-only-key-1234567890"
     assert settings.ai_base_url.endswith("/v1")
     assert settings.ai_model == "deepseek-chat"
+
+
+# ---------------- 模型列表：把"模型不存在"变成能照着改的话 ----------------
+# 2026-10-21 用户反馈"预填的模型错误不存在这个模型"：光回一句 HTTP 400 帮不上忙，
+# 必须能列出这个地址+密钥到底能用哪些模型。
+
+def _mock_transport(handler):
+    import httpx
+
+    return httpx.MockTransport(handler)
+
+
+def test_fetch_models_parses_openai_shape():
+    from health_agent.ai_client.probe import fetch_models
+
+    def handler(request):
+        import httpx
+
+        assert request.url.path.endswith("/models")
+        assert request.headers["Authorization"] == "Bearer sk-test"
+        return httpx.Response(200, json={"data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}]})
+
+    result = fetch_models(
+        api_key="sk-test", base_url="https://a.b/v1", transport=_mock_transport(handler)
+    )
+    assert result.ok is True
+    assert result.models == ["deepseek-chat", "deepseek-reasoner"]
+    assert "2 个" in result.message
+
+
+def test_fetch_models_parses_ollama_shape():
+    from health_agent.ai_client.probe import fetch_models
+
+    def handler(request):
+        import httpx
+
+        return httpx.Response(200, json={"models": [{"name": "qwen2.5:7b"}, {"name": "llama3:8b"}]})
+
+    result = fetch_models(
+        api_key="x", base_url="http://127.0.0.1:11434/v1", transport=_mock_transport(handler)
+    )
+    assert result.models == ["qwen2.5:7b", "llama3:8b"]
+
+
+def test_fetch_models_dedupes_and_keeps_order():
+    from health_agent.ai_client.probe import fetch_models
+
+    def handler(request):
+        import httpx
+
+        return httpx.Response(200, json={"data": [{"id": "b"}, {"id": "a"}, {"id": "b"}]})
+
+    result = fetch_models(api_key="k", base_url="https://a.b/v1", transport=_mock_transport(handler))
+    assert result.models == ["b", "a"]
+
+
+def test_fetch_models_translates_bad_key():
+    from health_agent.ai_client.probe import fetch_models
+
+    def handler(request):
+        import httpx
+
+        return httpx.Response(401, json={"error": {"message": "invalid key"}})
+
+    result = fetch_models(api_key="k", base_url="https://a.b/v1", transport=_mock_transport(handler))
+    assert result.ok is False
+    assert "密钥无效" in result.message
+
+
+def test_fetch_models_without_key_fails_soft():
+    from health_agent.ai_client.probe import fetch_models
+
+    result = fetch_models(api_key="", base_url="https://a.b/v1")
+    assert result.ok is False
+    assert "密钥" in result.message
+
+
+def test_fetch_models_empty_list_points_to_manual_input():
+    from health_agent.ai_client.probe import fetch_models
+
+    def handler(request):
+        import httpx
+
+        return httpx.Response(200, json={"data": []})
+
+    result = fetch_models(api_key="k", base_url="https://a.b/v1", transport=_mock_transport(handler))
+    assert result.ok is False
+    assert "手动" in result.message
+
+
+def test_missing_model_error_names_the_model_and_suggests_the_list():
+    from health_agent.ai_client.base import LLMError
+    from health_agent.ai_client.probe import _describe
+
+    exc = LLMError("http", "请求被拒绝 400", status_code=400, detail="Model Not Exist")
+    message = _describe(exc, "deepseek-chat")
+    assert "deepseek-chat" in message
+    assert "不存在" in message
+    assert "拉取" in message
+
+
+def test_model_error_from_chinese_provider_is_recognised():
+    from health_agent.ai_client.base import LLMError
+    from health_agent.ai_client.probe import _describe
+
+    exc = LLMError("http", "x", status_code=404, detail="模型不存在，请检查 model 参数")
+    assert "不存在" in _describe(exc, "glm-4")
+
+
+def test_error_detail_removes_key_like_fragments():
+    from health_agent.ai_client.http_client import _clean_detail
+
+    text = _clean_detail("Incorrect API key provided: sk-abcdef1234567890")
+    assert "sk-abcdef1234567890" not in text
+    assert "<已隐藏>" in text
+
+
+def test_error_detail_is_truncated():
+    from health_agent.ai_client.http_client import _clean_detail
+
+    assert len(_clean_detail("x" * 500)) <= 200
+
+
+def test_chat_client_carries_server_detail_on_4xx():
+    import httpx
+
+    from health_agent.ai_client.base import LLMError
+    from health_agent.ai_client.http_client import ChatCompletionClient
+
+    def handler(request):
+        return httpx.Response(400, json={"error": {"message": "Model Not Exist"}})
+
+    client = ChatCompletionClient(
+        api_key="k", base_url="https://a.b/v1", model="nope", transport=_mock_transport(handler)
+    )
+    with pytest.raises(LLMError) as info:
+        client.complete(system="s", user="u")
+    assert info.value.status_code == 400
+    assert "Model Not Exist" in info.value.detail
+
+
+def test_settings_models_action_lists_options(tmp_path, monkeypatch):
+    """点「保存并拉取可用模型」→ 页面直接给出可选项，不用跳转。"""
+    from health_agent.ai_client.probe import ModelsResult
+
+    captured = {}
+
+    def fake_fetch(*, api_key, base_url, timeout=12.0):
+        captured["api_key"] = api_key
+        captured["base_url"] = base_url
+        return ModelsResult(True, models=["deepseek-chat", "deepseek-reasoner"], message="共 2 个可用模型")
+
+    monkeypatch.setattr(ui_app, "fetch_models", fake_fetch)
+    client = _client(tmp_path)
+    response = client.post(
+        "/settings/ai",
+        data={"action": "models", "preset": "deepseek", "api_key": "sk-abc-123456"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "deepseek-reasoner" in response.text
+    assert "用这个模型并保存" in response.text
+    assert captured["api_key"] == "sk-abc-123456"
+    # 拉列表前先把密钥存好：否则用户还得再填一次
+    assert load_settings({}, project_root=tmp_path).ai_api_key == "sk-abc-123456"
+
+
+def test_settings_models_action_flags_current_model_missing(tmp_path, monkeypatch):
+    from health_agent.ai_client.probe import ModelsResult
+
+    monkeypatch.setattr(
+        ui_app,
+        "fetch_models",
+        lambda **kwargs: ModelsResult(True, models=["glm-4-flash"], message="共 1 个可用模型"),
+    )
+    client = _client(tmp_path)
+    response = client.post(
+        "/settings/ai",
+        data={"action": "models", "preset": "custom", "api_key": "k", "base_url": "https://a.b/v1", "model": "不存在"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "不在这个密钥的可用列表里" in response.text
+
+
+def test_settings_use_model_switches_and_probes(tmp_path, monkeypatch):
+    from health_agent.ai_client.probe import ProbeResult
+
+    monkeypatch.setattr(
+        ui_app,
+        "probe_connection",
+        lambda **kwargs: ProbeResult(True, "模型 已响应", model="glm-4-flash", latency_ms=88),
+    )
+    (tmp_path / ".env").write_text("AI_API_KEY=sk-existing\n", encoding="utf-8")
+    client = _client(tmp_path)
+    response = client.post(
+        "/settings/ai",
+        data={
+            "action": "use_model",
+            "preset": "zhipu",
+            "model": "glm-4-flash",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    location = unquote(response.headers["location"])
+    assert "已换成模型 glm-4-flash" in location
+    assert "试连成功" in location
+    settings = load_settings({}, project_root=tmp_path)
+    assert settings.ai_model == "glm-4-flash"
+    assert settings.ai_api_key == "sk-existing", "换模型不能把密钥弄丢"
