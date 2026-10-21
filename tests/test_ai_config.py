@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import unquote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,7 +22,9 @@ from health_agent.config import (
     Settings,
     active_preset_key,
     ai_env_override_keys,
+    base_url_problem,
     load_settings,
+    normalize_base_url,
     preset_by_key,
     save_ai_config,
 )
@@ -270,11 +273,11 @@ def test_clear_key_removes_it(tmp_path):
     assert load_settings({}, project_root=tmp_path).ai_api_key is None
 
 
-def test_save_rejects_bad_url_and_model(tmp_path):
+def test_save_rejects_unusable_address(tmp_path):
     client = _client(tmp_path)
     bad_url = client.post(
         "/settings/ai",
-        data={"action": "save", "preset": "custom", "base_url": "api.x.com", "model": "m"},
+        data={"action": "save", "preset": "custom", "base_url": "abc", "model": "m"},
         follow_redirects=False,
     )
     assert "error=" in bad_url.headers["location"]
@@ -291,6 +294,65 @@ def test_save_rejects_bad_url_and_model(tmp_path):
         follow_redirects=False,
     )
     assert "error=" in no_model.headers["location"]
+
+
+def test_empty_address_with_custom_preset_says_so(tmp_path):
+    """空地址不能说成"必须以 http 开头"——那是两件事（2026-10-21 真实反馈）。"""
+    client = _client(tmp_path)
+    response = client.post(
+        "/settings/ai",
+        data={"action": "save", "preset": "custom", "base_url": "", "model": "m", "api_key": "sk-x-123456789"},
+        follow_redirects=False,
+    )
+    message = unquote(response.headers["location"])
+    assert "接口地址是空的" in message
+    assert "以 http:// 或 https:// 开头" not in message
+
+
+def test_address_without_scheme_is_autocompleted(tmp_path):
+    client = _client(tmp_path)
+    response = client.post(
+        "/settings/ai",
+        data={
+            "action": "save",
+            "preset": "custom",
+            "api_key": "sk-auto-1234567890",
+            "base_url": "api.deepseek.com/v1",
+            "model": "deepseek-chat",
+        },
+        follow_redirects=False,
+    )
+    message = unquote(response.headers["location"])
+    assert "已补全 https://" in message
+    assert load_settings({}, project_root=tmp_path).ai_base_url == "https://api.deepseek.com/v1"
+
+
+def test_local_address_gets_http_not_https(tmp_path):
+    client = _client(tmp_path)
+    client.post(
+        "/settings/ai",
+        data={
+            "action": "save",
+            "preset": "custom",
+            "api_key": "sk-local-1234567890",
+            "base_url": "127.0.0.1:11434/v1",
+            "model": "qwen2.5:7b",
+        },
+        follow_redirects=False,
+    )
+    assert load_settings({}, project_root=tmp_path).ai_base_url == "http://127.0.0.1:11434/v1"
+
+
+def test_key_pasted_into_address_field_is_explained(tmp_path):
+    client = _client(tmp_path)
+    response = client.post(
+        "/settings/ai",
+        data={"action": "save", "preset": "custom", "base_url": "sk-abcdef123456", "model": "m"},
+        follow_redirects=False,
+    )
+    message = unquote(response.headers["location"])
+    assert "API 密钥" in message
+    assert "sk-abcdef123456" not in message  # 回显也不能把密钥打出来
 
 
 def test_test_connection_success_does_not_save(tmp_path, monkeypatch):
@@ -379,3 +441,142 @@ def test_probe_maps_http_status_to_plain_chinese():
 def test_settings_dataclass_never_reprs_key(tmp_path):
     settings = Settings(data_dir=tmp_path, db_path=tmp_path / "a.db", ai_api_key="sk-repr-check")
     assert "sk-repr-check" not in repr(settings)
+
+
+# ---------------- 地址归一化（2026-10-21 真实反馈后补） ----------------
+
+def test_normalize_adds_https_for_public_hosts():
+    assert normalize_base_url("api.deepseek.com/v1")[0] == "https://api.deepseek.com/v1"
+    assert normalize_base_url("https://api.x.com/v1") == ("https://api.x.com/v1", "")
+
+
+def test_normalize_uses_http_for_local_hosts():
+    for raw in ("127.0.0.1:11434/v1", "localhost:8000/v1"):
+        assert normalize_base_url(raw)[0] == f"http://{raw}"
+
+
+def test_normalize_explains_what_it_changed():
+    url, note = normalize_base_url("api.moonshot.cn/v1")
+    assert url == "https://api.moonshot.cn/v1"
+    assert "已补全 https://" in note
+    # 没改就别说改了
+    assert normalize_base_url("https://api.x.com/v1")[1] == ""
+
+
+def test_base_url_problem_messages():
+    assert "空的" in base_url_problem("")
+    assert "API 密钥" in base_url_problem("sk-1234567890abcdef")
+    assert "缺协议头" in base_url_problem("api.x.com/v1")
+    assert "主机名" in base_url_problem("https://abc")
+    assert base_url_problem("https://api.deepseek.com/v1") is None
+    assert base_url_problem("http://127.0.0.1:11434/v1") is None
+    assert base_url_problem("http://192.168.1.9:8000/v1") is None
+
+
+# ---------------- 2026-10-21 真实故障：开了密码之后 POST 表单变空 ----------------
+
+def _logged_in_client(tmp_path, password: str = "pw-123456") -> TestClient:
+    """带访问密码的应用 + 已登录会话（CSRF 中间件这段只有设了密码才会走）。"""
+    from health_agent.ui.auth import hash_password
+
+    settings = load_settings(
+        {"HEALTH_AGENT_PASSWORD_HASH": hash_password(password)}, project_root=tmp_path
+    )
+    app = create_app(settings, db_path=tmp_path / "pw.db")
+    client = TestClient(app)
+    response = client.post(
+        "/login", data={"password": password, "next": "/settings"}, follow_redirects=False
+    )
+    assert response.status_code == 303
+    return client
+
+
+def _csrf_of(client: TestClient, path: str = "/settings") -> str:
+    import re
+
+    match = re.search(r'name="csrf" value="([^"]+)"', client.get(path).text)
+    assert match is not None, "设置页应当带 csrf 隐藏域"
+    return match.group(1)
+
+
+def test_post_body_survives_csrf_middleware(tmp_path):
+    """CSRF 中间件校验完不能把请求体吃掉。
+
+    根因：Starlette 的 BaseHTTPMiddleware 只有在 `_body` 被缓存时才向下游重放请求体，
+    而 `request.form()` 走的是 `stream()`，会让下游收到空 body —— 于是路由里的
+    `Form(...)` 全部落回默认值（地址空、模式未知），用户看到"接口地址不能为空"。
+    """
+    client = _logged_in_client(tmp_path)
+    response = client.post(
+        "/settings/ai",
+        data={
+            "csrf": _csrf_of(client),
+            "action": "save",
+            "preset": "deepseek",
+            "api_key": "sk-pw-1234567890",
+            "base_url": "",
+            "model": "",
+        },
+        follow_redirects=False,
+    )
+    location = response.headers["location"]
+    assert "error=" not in location, location
+
+    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "AI_API_KEY=sk-pw-1234567890" in env_text
+    assert "deepseek.com" in env_text
+
+
+def test_other_post_forms_survive_csrf_middleware(tmp_path):
+    """同一个根因会影响所有 POST，顺手守一下界面模式切换。"""
+    client = _logged_in_client(tmp_path)
+    response = client.post(
+        "/settings/mode",
+        data={"csrf": _csrf_of(client), "mode": "chronos", "next_path": "/settings"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/settings"  # 而不是 /settings?error=未知的界面模式
+
+
+def test_posting_a_key_into_the_url_field_is_called_out(tmp_path):
+    """把密钥粘进「接口地址」是最常见的手滑，反馈要指名道姓。"""
+    client = _logged_in_client(tmp_path)
+    response = client.post(
+        "/settings/ai",
+        data={
+            "csrf": _csrf_of(client),
+            "action": "test",
+            "preset": "custom",
+            "api_key": "",
+            "base_url": "sk-abcdef123456",
+            "model": "deepseek-chat",
+        },
+        follow_redirects=False,
+    )
+    from urllib.parse import unquote
+
+    location = unquote(response.headers["location"])
+    assert "接口地址这一格填的像是 API 密钥" in location
+
+
+def test_key_only_submission_uses_the_preset(tmp_path):
+    """只填密钥、地址与模型留空：应当按预设补全并保存成功（用户实际的操作路径）。"""
+    client = _logged_in_client(tmp_path)
+    response = client.post(
+        "/settings/ai",
+        data={
+            "csrf": _csrf_of(client),
+            "action": "save",
+            "preset": "deepseek",
+            "api_key": "sk-only-key-1234567890",
+            "base_url": "",
+            "model": "",
+        },
+        follow_redirects=False,
+    )
+    assert "error=" not in response.headers["location"], response.headers["location"]
+    settings = load_settings({}, project_root=tmp_path)
+    assert settings.ai_api_key == "sk-only-key-1234567890"
+    assert settings.ai_base_url.endswith("/v1")
+    assert settings.ai_model == "deepseek-chat"

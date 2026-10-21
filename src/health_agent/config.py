@@ -323,6 +323,49 @@ def save_ai_config(
     os.replace(tmp, path)
 
 
+#: 界面里允许"只填半截地址"的本地地址：这些默认走 http，其余默认 https。
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0"})
+
+
+def normalize_base_url(raw: str) -> tuple[str, str]:
+    """把用户填的接口地址补成合法 URL，返回 `(url, 说明)`。
+
+    为什么在界面这一层做归一化：`.env` 里手写地址的人看得懂"要写完整 URL"，
+    而在手机上敲键盘的人经常只敲 `api.deepseek.com/v1`。同一个语义，不该因为
+    少打 8 个字符就报错——但补了什么必须明说，不能悄悄改。
+
+    只做一件事：缺协议头时补上（本机地址补 http，其余补 https）。
+    域名之外的东西不动，是否是合理网址由 `base_url_problem()` 单独判。
+    """
+    value = (raw or "").strip()
+    if not value or value.startswith(("http://", "https://")):
+        return value, ""
+    host = value.split("/")[0].split(":")[0].lower()
+    scheme = "http://" if host in _LOCAL_HOSTS else "https://"
+    return f"{scheme}{value}", f"已补全 {scheme}"
+
+
+def base_url_problem(url: str) -> str | None:
+    """判断一个接口地址能不能用；能用就返回 None，否则返回一句人话。"""
+    value = (url or "").strip()
+    if not value:
+        return "接口地址是空的"
+    if value.lower().startswith("sk-"):
+        return "这一格填的像是 API 密钥（以 sk- 开头），密钥请填到下面「API 密钥」那一格"
+    if not value.startswith(("http://", "https://")):
+        return f"接口地址缺协议头：现在填的是 {value!r}"
+    rest = value.split("://", 1)[1]
+    host = rest.split("/")[0].split("?")[0].split("#")[0]
+    hostname = host.split(":")[0]
+    if not hostname:
+        return "接口地址里没有主机名"
+    digits_like_ip = all(part.isdigit() for part in hostname.split(".") if part)
+    if "." not in hostname and hostname.lower() not in _LOCAL_HOSTS and not digits_like_ip:
+        # 不回显 hostname：这一格可能被误粘了密钥，报错信息不该把它带出去
+        return "接口地址里的主机名不像网址（应形如 api.deepseek.com）"
+    return None
+
+
 def ai_env_override_keys(env: Mapping[str, str] | None = None) -> list[str]:
     """返回被进程环境变量直接覆盖的 AI 键名（只给键名，绝不带值）。
 

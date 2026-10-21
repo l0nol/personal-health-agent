@@ -29,7 +29,9 @@ from ..config import (
     Settings,
     active_preset_key,
     ai_env_override_keys,
+    base_url_problem,
     load_settings,
+    normalize_base_url,
     preset_by_key,
     save_ai_config,
 )
@@ -175,6 +177,12 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             ):
                 # 非表单 POST 一律拒绝：否则一个没有 content-type 的请求就能绕过 CSRF
                 return HTMLResponse("请求格式不正确：仅接受表单提交", status_code=400)
+            # 必须先 body() 再 form()：
+            # Starlette 的 BaseHTTPMiddleware 只在 `_body` 被缓存时向下游重放请求体，
+            # 而 `form()` 走 stream() 会把下游收到的 body 变成空 —— 于是路由里的
+            # `Form(...)` 全部取到默认值（地址空、模式未知），用户看到的是"地址不能为空"
+            # 这种驴唇不对马嘴的报错。2026-10-21 真实踩到（开了访问密码才会走这段）。
+            await request.body()
             form = await request.form()
             sent = str(form.get("csrf", ""))
             if not hmac.compare_digest(sent, request.state.csrf):
@@ -976,12 +984,36 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
         """
         nonlocal settings
         url, name, note = _ai_inputs(preset, base_url, model)
+        # 先看原值：把密钥粘进地址栏的人，补完协议头就认不出来了
+        if url.strip().lower().startswith("sk-"):
+            return go(
+                "/settings?error="
+                + quote(
+                    "接口地址这一格填的像是 API 密钥（以 sk- 开头），"
+                    "密钥请填到下面「API 密钥」那一格；接口地址应形如 https://api.deepseek.com/v1"
+                )
+            )
+        url, norm_note = normalize_base_url(url)
+        if norm_note:
+            note = f"{note}，{norm_note}"
         key = api_key.strip()
 
-        if not url.startswith(("http://", "https://")):
-            return go("/settings?error=" + quote("接口地址必须以 http:// 或 https:// 开头"))
+        # 报错要说到点子上：空地址、缺协议头、把密钥填错格子，是三种不同的问题，
+        # 用同一句"必须以 http 开头"回过去，用户只会更困惑（2026-10-21 真实反馈）。
+        problem = base_url_problem(url)
+        if problem:
+            return go(
+                "/settings?error="
+                + quote(
+                    f"{problem}。可以选一个「服务商」预设自动填好，"
+                    "或自己填完整地址，例如 https://api.deepseek.com/v1"
+                )
+            )
         if not name:
-            return go("/settings?error=" + quote("模型名不能为空"))
+            return go(
+                "/settings?error="
+                + quote("还没有填模型名（例如 deepseek-chat）；选「服务商」预设可以自动带上")
+            )
 
         if action == "test":
             # 走线程池（本函数是同步 def，FastAPI 已替我们放到线程里），不阻塞事件循环
