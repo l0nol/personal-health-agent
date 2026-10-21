@@ -395,3 +395,32 @@
 - **剩余风险**：推理模型的思考长度因服务商而异，256 tokens 的试连预算在个别模型上仍可能不够
   （届时会报"预算被思考吃掉"，不影响保存）
 - **状态**：已完成
+
+### 2026-10-21 — T12 续 — AI 助手多轮对话 + 对话内取数/跳转 + 数据迁到 D 盘
+
+- **需求**：①提问后形成对话框、可继续提问，且能在对话里调取数据或跳转界面；②在 D 盘建目录存个人数据；③完成后自动验证并推 GitHub。
+- **修改文件**：
+  - `ai_client/assistant.py`：`Answer` 增加 `card` / `refs`；`ask()` 接受 `history`，有 `chat()` 就发消息数组，
+    否则退回单轮 `complete()`；system prompt 允许引用历史与「本次聚焦」数据
+  - `ai_client/http_client.py`：抽出 `_request()`，新增 `chat(messages, max_tokens)`
+  - `ai_client/tools.py`（新）：本地"取数/跳转"层——`guess_metric()` / `guess_window()` / `metric_card()` /
+    `page_links()` / `resolve()` / `card_prompt()`。**不用 function calling**：数字必须由程序算，
+    让模型参与取数就有机会被它编出来
+  - `ai_client/chat_store.py`（新）：对话落库（`settings` 表内部键，**绕开 audit**——否则每次提问都会把
+    整段对话写进 before/after）；`MAX_TURNS = 16`
+  - `ui/app.py`：`/assistant` GET 读对话、POST 追加两轮并 303 到 `#bottom`、新增 `POST /assistant/clear`
+  - `ui/templates/assistant.html`：气泡式对话流 + 数据卡片 + 跳转 chips + 清空按钮
+  - `ui/static/css/components.css`：`.chat-*` / `.bubble-*` 样式（移动端气泡满宽）
+  - `.env`：`HEALTH_AGENT_DATA_DIR=D:/HealthData`、`HEALTH_AGENT_DB_PATH=D:/HealthData/health.db`
+  - `README.md`、`docs/02-runbook.md`（新增 §7.6 数据搬家）、`docs/08-workbench-overview.md`、`TASK_STATUS.md`
+- **新增测试（11 条）**：时间段理解（今天/这周/上周/近 30 天/近两周/显式 N 天）、指标识别（含"睡得"、"睡眠心率"优先）、
+  页面→链接、卡片本地计算、无数据不硬凑卡片、卡片进 prompt、多轮消息顺序、只有 complete() 的替身可降级、
+  对话跨重启存活、历史只留 16 轮、清空
+- **执行命令**：`.venv/Scripts/python.exe -m pytest` → **557 passed / 1 skipped**
+- **真实验证**：
+  - 12 个页面全 200；`/settings` 显示 `D:/HealthData/health.db`
+  - 迁库：`sha256sum` 两侧一致（`e7661bc4…`）、38 条记录（30 确认 / 8 待确认）、schema v2
+  - 连续两轮真问答：第一轮讲 7 天睡眠逐日并指出"最后一天 136 分钟最低"，第二轮正确切到"体重近 30 天只有 1 天数据"；
+    数据卡片与 `/trends?metric=weight_kg` 链接都渲染出来了
+- **剩余风险**：对话存在本机库里（含健康描述），需要时可一键清空；跨重启保留意味着"清空"是有意义的操作
+- **状态**：已完成

@@ -160,6 +160,31 @@ AI_MODEL=qwen-plus
 | 保存成功但模型没变 | 启动前 `export` 过同名环境变量，环境变量优先 | 页面会明确提示是哪几个变量；去掉后重启 |
 | 测试通过但报告没变 | 简报有缓存，只在新数据或主动点「用 AI 改写」时重算 | 正常行为（避免静默花钱） |
 
+## 7.6 数据放在哪 / 怎么搬到别的盘
+
+默认放项目里的 `data/`，但**代码可以重装、数据不该跟着项目走**。本机已迁到 `D:/HealthData`：
+
+```bash
+# .env
+HEALTH_AGENT_DATA_DIR=D:/HealthData
+HEALTH_AGENT_DB_PATH=D:/HealthData/health.db
+```
+
+搬家四步（本机 2026-10-21 就这么做的）：
+
+1. **先停服务**（数据库文件不能边写边拷）：`netstat -ano | findstr :8000` 找到 PID 后 `taskkill /PID <pid> /F`
+2. `mkdir D://HealthData`，然后 `cp -a data/. D:/HealthData/`
+3. **对一下 sha256**：`sha256sum data/health.db D:/HealthData/health.db` 两行必须一致；
+   再用 sqlite 数一下记录条数，别只看文件大小
+4. 改 `.env` 两行 → 重启 → 打开 `/settings` 确认「数据库」一栏显示新路径
+
+目录里会有：`health.db`（主库）、`backup/`（备份 zip）、`.session_secret`（会话签名密钥，
+**跟着搬走就不用重新登录**）、`uploads/` 与 `inbox/`（导入暂存）。
+
+确认新位置跑通、数据条数一致后，项目里的旧 `data/` 可以删掉；删之前先跑一次 `cli backup` 留个 zip。
+
+> 不愿意用 `D:` 的话换成任意路径都行，只要两行都改、都是绝对路径。
+
 ## 8. 故障排查
 
 | 症状 | 可能原因 | 处理 |

@@ -9,7 +9,6 @@ from __future__ import annotations
 import hmac
 import json
 import time
-import uuid
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import quote
@@ -20,12 +19,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import __version__
+from ..ai_client import chat_store
 from ..ai_client.assistant import (
     MAX_QUESTION_CHARS as ASSISTANT_MAX_QUESTION_CHARS,
 )
 from ..ai_client.assistant import (
     QUICK_QUESTIONS,
-    Answer,
     ask as assistant_ask,
 )
 from ..ai_client.probe import fetch_models, probe_connection
@@ -630,21 +629,15 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             return go(f"/reports?{query}&error=" + quote(f"AI 调用失败（{reason}），已保留本地文案"))
         return go(f"/reports?{query}&msg=" + quote("已用 AI 改写，结果已缓存"))
 
-    # ---------------- AI 助手（自由提问） ----------------
-
-    #: 最近几次回答。放内存里而不是建表：
-    #: 一次问答的结果没有长期价值，也包含健康描述，落库反而多一处要清理的隐私面。
-    #: 重启就没了，页面会明说这一点。
-    answers: dict[str, Answer] = {}
+    # ---------------- AI 助手（多轮对话） ----------------
 
     @app.get("/assistant", response_class=HTMLResponse)
-    def assistant_page(request: Request, q: str = "", a: str = ""):
-        answer = answers.get(a) if a else None
+    def assistant_page(request: Request, conn=Depends(get_db), q: str = ""):
         return render(
             request,
             "assistant.html",
+            turns=chat_store.load(conn),
             question=q[:ASSISTANT_MAX_QUESTION_CHARS],
-            answer=answer,
             quick_questions=QUICK_QUESTIONS,
             ai_enabled=settings.ai_enabled,
             ai_model=settings.ai_model,
@@ -654,17 +647,36 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
 
     @app.post("/assistant")
     def assistant_submit(request: Request, conn=Depends(get_db), question: str = Form("")):
-        """显式提交才花钱（规格 §7）：GET 打开页面永远零网络。"""
+        """显式提交才花钱（规格 §7）：GET 打开页面永远零网络。
+
+        一问一答都落库（`settings` 表的内部键），所以关掉浏览器再回来还能接着说；
+        历史只取最近几轮喂给模型，避免 prompt 越滚越大。
+        """
         text = (question or "").strip()
         if not text:
             return go("/assistant?error=" + quote("先写一句想问的，例如「我这周睡得怎么样」"))
-        result = assistant_ask(conn, text, settings=settings)
-        token = uuid.uuid4().hex[:12]
-        answers[token] = result
-        # 只留最近 20 条：内存里堆答案没有意义，也没有地方给用户清理
-        while len(answers) > 20:
-            answers.pop(next(iter(answers)))
-        return go(f"/assistant?a={token}")
+        history = chat_store.history_for_model(chat_store.load(conn))
+        result = assistant_ask(conn, text, settings=settings, history=history)
+        chat_store.append(
+            conn,
+            {"role": "user", "text": text},
+            {
+                "role": "assistant",
+                "text": result.text,
+                "source": result.source,
+                "model": result.model,
+                "note": result.note,
+                "refs": result.refs or [],
+                "card": result.card,
+            },
+        )
+        # 回到页面底部，让新的一问一答在视野里（零 JS 也能"自动滚到底"）
+        return go("/assistant#bottom")
+
+    @app.post("/assistant/clear")
+    def assistant_clear(conn=Depends(get_db)):
+        chat_store.clear(conn)
+        return go("/assistant?msg=" + quote("已清空对话（历史记录只在本机数据库里）"))
 
     # ---------------- 睡眠分析 / 指标趋势 / 时钟模式（只读） ----------------
 

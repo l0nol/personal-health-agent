@@ -24,6 +24,7 @@ from ..reports.builder import latest_data_date
 from ..storage.repository import now_iso
 from .base import LLMClient, LLMError
 from .http_client import ChatCompletionClient
+from .tools import card_prompt, resolve
 
 SOURCE_AI = "ai"
 SOURCE_LOCAL = "local"
@@ -48,22 +49,24 @@ MAX_QUESTION_CHARS = 500
 MAX_ANSWER_CHARS = 2000
 
 #: 首页与助手面板的快捷问题。点一下只是把文字填进输入框，不发请求。
+#: 最后一个特意是"跳页面"的说法，用来演示对话里可以直接跳转。
 QUICK_QUESTIONS: tuple[str, ...] = (
     "我这周睡得怎么样？",
-    "最近有哪些数据缺失或者偏少？",
-    "训练强度现在合适吗？",
-    "哪些指标最近变化比较大？",
+    "最近哪些数据缺失或者偏少？",
+    "体重最近 30 天有变化吗？",
+    "打开趋势页，我想自己看看",
 )
 
-SYSTEM_PROMPT = """你是一个个人健康数据的解读助手。用户会给你一份**已经由程序算好的**健康数据摘要，以及一个自己的问题。
+SYSTEM_PROMPT = """你是一个个人健康数据的解读助手。用户会给你一份**已经由程序算好的**健康数据摘要（其中「本次聚焦」是系统根据问题自动取出的指标数据），以及一个自己的问题。你们可能在多轮对话中，前面的问答也是你们说过的。
 
 严格规则：
-1. 只能使用摘要里出现的数字，禁止自己计算、估算、补全或引用常识区间。
+1. 只能使用摘要与历史对话里出现过的数字，禁止自己计算、估算、补全或引用常识区间。
 2. 禁止疾病诊断、禁止治疗或用药建议、禁止预测任何风险。用户问到这些，直接说"这超出我的能力范围，建议问医生"。
 3. 摘要里没有的项目就是"数据不足"，要如实说不足，不要猜、不要用别的指标顶替。
-4. 语气平实，像同事帮你看数据；不夸张、不惊吓、不说教，不使用感叹号。
-5. 回答控制在 250 字以内，用短段落，不要用表格、不要用 Markdown 标题。
-6. 只输出回答正文。"""
+4. 用户想去看页面时，直接告诉他点下面的链接（系统会自动附上），不要编造链接或路径。
+5. 语气平实，像同事帮你看数据；不夸张、不惊吓、不说教，不使用感叹号。
+6. 回答控制在 250 字以内，用短段落，不要用表格、不要用 Markdown 标题。
+7. 只输出回答正文。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +80,10 @@ class Answer:
     latency_ms: int | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    #: 本地算好的数据卡片（哪个指标、哪段时间、逐日值），由模板直接渲染成表
+    card: dict | None = None
+    #: 跳转链接（打开睡眠页 / 看某指标趋势 …）
+    refs: list[dict] | None = None
 
     @property
     def is_ai(self) -> bool:
@@ -140,9 +147,15 @@ def build_context(conn: sqlite3.Connection, *, end: date | None = None) -> dict:
     }
 
 
-def _context_lines(context: dict) -> list[str]:
+def _context_lines(context: dict, card: dict | None = None) -> list[str]:
     """把上下文压成几条人能读的话，用作本地兜底答案。"""
     lines: list[str] = []
+    if card is not None:
+        average = card["mean"]
+        lines.append(
+            f"{card['title']}：{card['window']} 有 {card['days']} 天数据，"
+            f"均值 {average} {card['unit']}，最小 {card['min']}，最大 {card['max']}。"
+        )
     daily = context["近 7 天夜间睡眠逐日"]
     if daily:
         values = [item["分钟"] for item in daily if item["分钟"] is not None]
@@ -214,8 +227,14 @@ def ask(
     *,
     settings,
     client: LLMClient | None = None,
+    history: list[dict] | None = None,
 ) -> Answer:
-    """回答一个问题。调用方永远拿到一段可显示的文字。"""
+    """回答一个问题。调用方永远拿到一段可显示的文字 + 可选的数据卡片与链接。
+
+    `history` 是之前几轮的 `[{"role","content"}]`，用于多轮对话；
+    传空或不传就是单轮。数据摘要每轮都重新算，不缓存——
+    用户可能刚确认了几条记录，这时候还拿旧数字回答才是错的。
+    """
     cleaned = (question or "").strip()
     if not cleaned:
         return Answer(cleaned, "先写一句想问的吧，例如「我这周睡得怎么样」。", error="empty")
@@ -223,7 +242,10 @@ def ask(
         cleaned = cleaned[:MAX_QUESTION_CHARS]
 
     context = build_context(conn)
-    local_text = "\n".join(_context_lines(context))
+    card, refs = resolve(conn, cleaned)
+    if card is not None:
+        context["本次聚焦"] = card_prompt(card)
+    local_text = "\n".join(_context_lines(context, card))
 
     if client is None and not settings.ai_enabled:
         return Answer(
@@ -231,6 +253,8 @@ def ask(
             local_text,
             source=SOURCE_LOCAL,
             note="还没有配置 AI 接口，这里是本地整理；配置后同一个问题会得到更通顺的回答。",
+            card=card,
+            refs=refs,
         )
 
     if client is None:
@@ -247,10 +271,18 @@ def ask(
         + json.dumps(context, ensure_ascii=False, indent=2)
         + f"\n\n用户的问题：{cleaned}"
     )
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages.extend(history or [])
+    messages.append({"role": "user", "content": prompt})
 
     try:
         # 上限留足：推理模型的思考过程也吃 completion token，预算太紧会拿到空正文
-        result = client.complete(system=SYSTEM_PROMPT, user=prompt, max_tokens=1200)
+        chat = getattr(client, "chat", None)
+        if callable(chat):
+            result = chat(messages, max_tokens=1200)
+        else:
+            # 只实现了 complete() 的客户端（老测试替身）走单轮，行为不变
+            result = client.complete(system=SYSTEM_PROMPT, user=prompt, max_tokens=1200)
     except LLMError as exc:
         _log_call(
             conn,
@@ -266,6 +298,8 @@ def ask(
             model=settings.ai_model,
             note=f"AI 调用失败（{detail or exc.kind}），这里是本地整理。",
             error=exc.kind,
+            card=card,
+            refs=refs,
         )
     except Exception as exc:  # noqa: BLE001 - 页面不能因为一次调用异常就 500
         _log_call(conn, model=settings.ai_model, status="error", error_code=type(exc).__name__)
@@ -276,6 +310,8 @@ def ask(
             model=settings.ai_model,
             note=f"AI 调用异常（{type(exc).__name__}），这里是本地整理。",
             error="exception",
+            card=card,
+            refs=refs,
         )
 
     text = _clean_answer(result.text)
@@ -288,6 +324,8 @@ def ask(
             model=result.model,
             note="模型返回了空内容，这里是本地整理。",
             error="empty",
+            card=card,
+            refs=refs,
         )
 
     _log_call(
@@ -306,4 +344,6 @@ def ask(
         latency_ms=result.latency_ms,
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
+        card=card,
+        refs=refs,
     )

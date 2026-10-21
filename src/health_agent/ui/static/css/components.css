@@ -366,3 +366,88 @@ textarea[name="question"] {
   line-height: 1.7;
   resize: vertical;
 }
+
+/* ---------------- AI 助手对话 ---------------- */
+.chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.chat-head h2 { margin: 0; }
+.chat-head .inline-form { margin: 0; }
+
+.chat-empty {
+  margin: 12px 0 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.bubble {
+  max-width: 92%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  line-height: 1.75;
+}
+.bubble p { margin: 0; }
+.bubble-user {
+  align-self: flex-end;
+  background: var(--primary-soft);
+  border-color: transparent;
+  border-bottom-right-radius: 4px;
+}
+.bubble-ai {
+  align-self: flex-start;
+  background: var(--surface);
+  border-bottom-left-radius: 4px;
+}
+.bubble-ai .chips { margin-top: 10px; }
+
+.chat-card {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.chat-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.kv.compact { margin: 8px 0 0; }
+.kv.compact dt { font-size: 13px; }
+.kv.compact dd { font-size: 13px; }
+
+.chat-series {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+}
+.chat-dot {
+  font-size: 12px;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+.chat-dot b { color: var(--text); font-weight: 600; }
+
+@media (max-width: 767px) {
+  .bubble { max-width: 100%; }
+  .chat-series { gap: 4px; }
+}

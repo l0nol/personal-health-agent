@@ -149,14 +149,24 @@ class ChatCompletionClient:
 
         return _parse_model_ids(data)
 
+    def chat(self, messages: list[dict], *, max_tokens: int = 600) -> LLMResult:
+        """按 OpenAI 的 messages 形状发一次请求（多轮对话用）。"""
+        return self._request(messages, max_tokens=max_tokens)
+
     def complete(self, *, system: str, user: str, max_tokens: int = 600) -> LLMResult:
-        url = f"{self._base_url}/chat/completions"
-        payload = {
-            "model": self._model,
-            "messages": [
+        return self._request(
+            [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
+            max_tokens=max_tokens,
+        )
+
+    def _request(self, messages: list[dict], *, max_tokens: int) -> LLMResult:
+        url = f"{self._base_url}/chat/completions"
+        payload = {
+            "model": self._model,
+            "messages": messages,
             "temperature": 0.3,
             "max_tokens": max_tokens,
             # 显式声明不要流式：有些网关默认按流式回，页面这边只处理整段 JSON

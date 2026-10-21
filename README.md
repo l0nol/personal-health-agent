@@ -176,7 +176,7 @@ cp .env.example .env
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `HEALTH_AGENT_DB_PATH` | `data/health.db` | 本地库路径 |
+| `HEALTH_AGENT_DB_PATH` | `data/health.db` | 本地库路径。本机部署已指向 `D:/HealthData/health.db`（见 runbook §9） |
 | `HEALTH_AGENT_LAN` | `0` | 置 1 允许局域网访问；**必须同时设置密码 hash，否则拒绝启动** |
 | `AI_API_KEY` | 空 | 为空时 AI 全部走本地模板降级，不影响记录与统计 |
 | `AI_BASE_URL` | `https://api.deepseek.com/v1` | 任何 OpenAI 兼容端点都能接 |
