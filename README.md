@@ -180,7 +180,7 @@ cp .env.example .env
 | `HEALTH_AGENT_LAN` | `0` | 置 1 允许局域网访问；**必须同时设置密码 hash，否则拒绝启动** |
 | `AI_API_KEY` | 空 | 为空时 AI 全部走本地模板降级，不影响记录与统计 |
 | `AI_BASE_URL` | `https://api.deepseek.com/v1` | 任何 OpenAI 兼容端点都能接 |
-| `AI_MODEL` | `deepseek-chat` | 模型可切换，不硬编码 |
+| `AI_MODEL` | `deepseek-flash` | 模型可切换，不硬编码；不确定就用设置页「保存并拉取可用模型」 |
 | `HEALTH_AGENT_SLEEP_TARGET_MIN` | `420` | 睡眠目标（分钟），用于趋势提醒 |
 | `HEALTH_AGENT_BASELINE_MAD_FACTOR` | `2.5` | 基线偏离阈值倍数 |
 | `HEALTH_AGENT_RULE_COOLDOWN_HOURS` | `72` | 同类提醒冷却小时数 |
@@ -201,7 +201,7 @@ AI 这三项也可以直接在界面「设置 → AI 分析接口」里填：保
 
 | 服务商 | `AI_BASE_URL` | `AI_MODEL` 示例 |
 |---|---|---|
-| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` / `deepseek-reasoner` |
+| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-flash` / `deepseek-v4-pro`（实测值，推理型） |
 | 通义千问（百炼兼容模式） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` |
 | Moonshot / Kimi | `https://api.moonshot.cn/v1` | `moonshot-v1-8k` |
 | 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash` |

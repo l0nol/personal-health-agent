@@ -1088,7 +1088,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
         if not name:
             return go(
                 "/settings?error="
-                + quote("还没有填模型名（例如 deepseek-chat）；选「服务商」预设可以自动带上")
+                + quote("还没有填模型名（例如 deepseek-flash）；选「服务商」预设可以自动带上")
             )
 
         if action == "test":

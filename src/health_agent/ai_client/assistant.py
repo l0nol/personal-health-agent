@@ -249,7 +249,8 @@ def ask(
     )
 
     try:
-        result = client.complete(system=SYSTEM_PROMPT, user=prompt, max_tokens=700)
+        # 上限留足：推理模型的思考过程也吃 completion token，预算太紧会拿到空正文
+        result = client.complete(system=SYSTEM_PROMPT, user=prompt, max_tokens=1200)
     except LLMError as exc:
         _log_call(
             conn,

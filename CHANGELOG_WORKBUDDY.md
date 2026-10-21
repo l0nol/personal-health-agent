@@ -367,3 +367,31 @@
 - **未验证项目**：真实密钥下 `GET /models` 的返回（无可用密钥）、平板/手机真机
 - **剩余风险**：第二组周数据的窗口是推断值；`pending` 状态下不参与任何统计，确认前不影响结论
 - **状态**：待审核
+
+### 2026-10-21 — 修复 — 推理模型的"正文为空"与 DeepSeek 预设模型名
+
+- **触发**：用户实测反馈「已保存模型 deepseek-v4-pro，但试连失败：调用失败：服务端返回了无法解析的内容」。
+- **根因（用真实密钥复现）**：`deepseek-v4-pro` 是**推理模型**。试连只给 16 token，
+  模型把 16 个 token 全用在思考上（`reasoning_tokens=16`、`finish_reason=length`），
+  `content` 为空 → `_parse` 抛 `LLMError("http", "响应内容为空")`，而 `_describe`
+  又把这条 message 丢掉，只剩一句"无法解析的内容"。
+  同一地址的可用模型实测为 `deepseek-flash` / `deepseek-v4-pro`，**预设里的 `deepseek-chat` 已不存在**。
+- **修改文件**：
+  - `ai_client/probe.py`：`PROBE_MAX_TOKENS = 256`（原 16）；新增 `_is_reasoning_budget_error()`，
+    预算被思考吃掉时判为**连通成功**并如实说明；`_describe()` 对"200 但格式不对"带上服务端原话
+  - `ai_client/http_client.py`：`_parse` 拆分 `_result_from` / `_parse_sse`；支持 SSE 分块流
+    （`data: {...}`，有些网关不传 stream 也这么回）；识别 200 里的 `error` 对象；
+    报错一律带 `detail`（响应体片段，抹掉密钥）；请求显式带 `"stream": false`
+  - `ai_client/summarizer.py` / `ai_client/assistant.py`：`max_tokens` 600→900 / 700→1200（给思考留余量）
+  - `config.py`：`DEFAULT_MODEL` 与 DeepSeek 预设改为 `deepseek-flash`，hint 写明实测可用模型
+  - `README.md`、`.env.example`、`docs/02-runbook.md`、模板 placeholder、`app.py` 提示文案同步
+- **新增测试（11 条）**：SSE 可解析 / content-type 缺失时按 body 识别 / `stream:false` 确实发出 /
+  200 里的 error 对象 / HTML 拦截页留片段 / 推理预算耗尽判成功 / 预算 ≥128 / 空正文无推理仍算失败 /
+  响应片段不含密钥
+- **执行命令**：`.venv/Scripts/python.exe -m pytest` → **546 passed / 1 skipped**
+- **真实验证**：试连 → `连接成功 · 模型 deepseek-v4-pro 已响应 · 1903 ms`；
+  模型列表 → `deepseek-flash`、`deepseek-v4-pro`；AI 助手真问答 → 正确列出"睡眠平均心率/静息心率/步数无数据、
+  8 条待确认"，未越界做诊断
+- **剩余风险**：推理模型的思考长度因服务商而异，256 tokens 的试连预算在个别模型上仍可能不够
+  （届时会报"预算被思考吃掉"，不影响保存）
+- **状态**：已完成

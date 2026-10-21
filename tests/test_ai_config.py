@@ -52,7 +52,7 @@ def test_presets_are_complete_and_unique():
 
 
 def test_preset_by_key():
-    assert preset_by_key("deepseek")["model"] == "deepseek-chat"
+    assert preset_by_key("deepseek")["model"] == "deepseek-flash"
     assert preset_by_key("没这个") is None
 
 
@@ -579,7 +579,7 @@ def test_key_only_submission_uses_the_preset(tmp_path):
     settings = load_settings({}, project_root=tmp_path)
     assert settings.ai_api_key == "sk-only-key-1234567890"
     assert settings.ai_base_url.endswith("/v1")
-    assert settings.ai_model == "deepseek-chat"
+    assert settings.ai_model == preset_by_key("deepseek")["model"]
 
 
 # ---------------- 模型列表：把"模型不存在"变成能照着改的话 ----------------
@@ -791,3 +791,210 @@ def test_settings_use_model_switches_and_probes(tmp_path, monkeypatch):
     settings = load_settings({}, project_root=tmp_path)
     assert settings.ai_model == "glm-4-flash"
     assert settings.ai_api_key == "sk-existing", "换模型不能把密钥弄丢"
+
+
+# ---------------- 200 但不是约定 JSON（2026-10-21 用户实测踩到） ----------------
+# 现象：「已保存模型 deepseek-v4-pro，但试连失败：调用失败：服务端返回了无法解析的内容」。
+# 根因：`_parse` 抛的 LLMError 只带了 kind，`_describe` 把服务端原话丢了，
+# 用户看不到到底是流式壳、网关错误体，还是 HTML 拦截页。
+
+def test_sse_response_is_parsed_not_reported_as_unparsable():
+    """有些网关不管传不传 stream 都回 `data: {...}`，这其实是有正文的。"""
+    import httpx
+
+    from health_agent.ai_client.http_client import ChatCompletionClient
+
+    body = (
+        'data: {"choices":[{"delta":{"content":"可"}}]}\n\n'
+        'data: {"model":"deepseek-v4-pro","choices":[{"message":{"content":"可用"}}],'
+        '"usage":{"prompt_tokens":9,"completion_tokens":2}}\n\n'
+        "data: [DONE]\n\n"
+    )
+
+    def handler(request):
+        return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+
+    client = ChatCompletionClient(
+        api_key="k", base_url="https://a.b/v1", model="deepseek-v4-pro", transport=_mock_transport(handler)
+    )
+    result = client.complete(system="s", user="u")
+    assert result.text == "可用"
+    assert result.model == "deepseek-v4-pro"
+    assert result.input_tokens == 9
+
+
+def test_sse_detected_without_content_type():
+    """content-type 没写对时，靠 body 开头 `data:` 也要认出来。"""
+    import httpx
+
+    from health_agent.ai_client.http_client import ChatCompletionClient
+
+    body = 'data: {"choices":[{"message":{"content":"可用"}}]}\n\n'
+
+    def handler(request):
+        return httpx.Response(200, text=body, headers={"content-type": "application/json"})
+
+    client = ChatCompletionClient(
+        api_key="k", base_url="https://a.b/v1", model="m", transport=_mock_transport(handler)
+    )
+    assert client.complete(system="s", user="u").text == "可用"
+
+
+def test_stream_false_is_sent_explicitly():
+    import httpx
+
+    from health_agent.ai_client.http_client import ChatCompletionClient
+
+    seen = {}
+
+    def handler(request):
+        import json as _json
+
+        seen.update(_json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    client = ChatCompletionClient(
+        api_key="k", base_url="https://a.b/v1", model="m", transport=_mock_transport(handler)
+    )
+    client.complete(system="s", user="u")
+    assert seen.get("stream") is False
+
+
+def test_error_object_in_200_is_reported_with_its_message():
+    import httpx
+
+    from health_agent.ai_client.base import LLMError
+    from health_agent.ai_client.http_client import ChatCompletionClient
+
+    def handler(request):
+        return httpx.Response(200, json={"error": {"message": "upstream timeout, please retry"}})
+
+    client = ChatCompletionClient(
+        api_key="k", base_url="https://a.b/v1", model="m", transport=_mock_transport(handler)
+    )
+    with pytest.raises(LLMError) as info:
+        client.complete(system="s", user="u")
+    assert "upstream timeout" in info.value.detail
+
+
+def test_html_response_keeps_a_body_snippet():
+    import httpx
+
+    from health_agent.ai_client.base import LLMError
+    from health_agent.ai_client.http_client import ChatCompletionClient
+
+    def handler(request):
+        return httpx.Response(200, text="<html><body>502 Bad Gateway</body></html>")
+
+    client = ChatCompletionClient(
+        api_key="k", base_url="https://a.b/v1", model="m", transport=_mock_transport(handler)
+    )
+    with pytest.raises(LLMError) as info:
+        client.complete(system="s", user="u")
+    assert "不是 JSON" in str(info.value)
+    assert "502 Bad Gateway" in info.value.detail
+
+
+def test_probe_explains_unparsable_body_instead_of_swallowing_it():
+    import httpx
+
+    from health_agent.ai_client.probe import probe_connection
+
+    def handler(request):
+        return httpx.Response(200, json={"error": {"message": "no available channel"}})
+
+    result = probe_connection(
+        api_key="k", base_url="https://a.b/v1", model="deepseek-v4-pro", transport=_mock_transport(handler)
+    )
+    assert result.ok is False
+    assert "no available channel" in result.message
+    assert "无法解析" not in result.message
+
+
+def test_probe_succeeds_on_sse_only_gateway():
+    import httpx
+
+    from health_agent.ai_client.probe import probe_connection
+
+    def handler(request):
+        body = 'data: {"choices":[{"message":{"content":"可用"}}]}\n\n'
+        return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+
+    result = probe_connection(
+        api_key="k", base_url="https://a.b/v1", model="deepseek-v4-pro", transport=_mock_transport(handler)
+    )
+    assert result.ok is True
+    assert "已响应" in result.message
+
+
+def test_body_snippet_never_leaks_a_key():
+    import httpx
+
+    from health_agent.ai_client.base import LLMError
+    from health_agent.ai_client.http_client import ChatCompletionClient
+
+    def handler(request):
+        return httpx.Response(200, text="denied for sk-abcdef1234567890")
+
+    client = ChatCompletionClient(
+        api_key="k", base_url="https://a.b/v1", model="m", transport=_mock_transport(handler)
+    )
+    with pytest.raises(LLMError) as info:
+        client.complete(system="s", user="u")
+    assert "sk-abcdef1234567890" not in info.value.detail
+
+
+def test_reasoning_model_with_tiny_budget_is_still_a_successful_probe():
+    """推理模型把预算花在思考上、正文为空 —— 连通性没问题，不该报失败。
+
+    2026-10-21 真实数据：deepseek-v4-pro，max_tokens=16 → reasoning_tokens=16、
+    finish_reason=length、content 为空；128 起才正常。
+    """
+    import httpx
+
+    from health_agent.ai_client.probe import probe_connection
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "model": "deepseek-v4-pro",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "", "reasoning_content": "先想一下……"},
+                        "finish_reason": "length",
+                    }
+                ],
+            },
+        )
+
+    result = probe_connection(
+        api_key="k", base_url="https://a.b/v1", model="deepseek-v4-pro", transport=_mock_transport(handler)
+    )
+    assert result.ok is True
+    assert "推理型" in result.message
+
+
+def test_probe_budget_is_wide_enough_for_reasoning_models():
+    """试连预算不能还是 16：推理模型的思考会吃光它。"""
+    from health_agent.ai_client.probe import PROBE_MAX_TOKENS
+
+    assert PROBE_MAX_TOKENS >= 128
+
+
+def test_empty_content_without_reasoning_is_still_an_error():
+    import httpx
+
+    from health_agent.ai_client.probe import probe_connection
+
+    def handler(request):
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]}
+        )
+
+    result = probe_connection(
+        api_key="k", base_url="https://a.b/v1", model="m", transport=_mock_transport(handler)
+    )
+    assert result.ok is False
+    assert "空" in result.message

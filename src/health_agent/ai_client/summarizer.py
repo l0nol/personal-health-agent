@@ -154,7 +154,8 @@ def rewrite_report(
         )
 
     try:
-        result = client.complete(system=SYSTEM_PROMPT, user=build_user_prompt(summary))
+        # 上限留足：推理模型会先"想"一轮，预算太紧会导致正文为空（正文只要求 120 字）
+        result = client.complete(system=SYSTEM_PROMPT, user=build_user_prompt(summary), max_tokens=900)
         text = parse_response(result.text)
     except LLMError as exc:
         _log_call(

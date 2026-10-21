@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import time
 
@@ -158,6 +159,8 @@ class ChatCompletionClient:
             ],
             "temperature": 0.3,
             "max_tokens": max_tokens,
+            # 显式声明不要流式：有些网关默认按流式回，页面这边只处理整段 JSON
+            "stream": False,
         }
         started = time.monotonic()
         last_error: LLMError | None = None
@@ -192,20 +195,19 @@ class ChatCompletionClient:
         assert last_error is not None
         raise last_error
 
-    def _parse(self, response: httpx.Response, latency_ms: int) -> LLMResult:
-        try:
-            data = response.json()
-        except ValueError as exc:
-            raise LLMError("http", "响应不是合法 JSON") from exc
-
+    def _result_from(self, data: object, latency_ms: int) -> LLMResult | None:
+        """从一条"标准"响应里取正文；取不到返回 None（由调用方决定怎么报错）。"""
+        if not isinstance(data, dict):
+            return None
         choices = data.get("choices") or []
-        if not choices:
-            raise LLMError("http", "响应缺少 choices")
-        message = choices[0].get("message") or {}
+        if not isinstance(choices, list) or not choices:
+            return None
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        if not isinstance(message, dict):
+            return None
         content = message.get("content")
         if not isinstance(content, str) or not content.strip():
-            raise LLMError("http", "响应内容为空")
-
+            return None
         usage = data.get("usage") or {}
         return LLMResult(
             text=content,
@@ -214,3 +216,77 @@ class ChatCompletionClient:
             output_tokens=usage.get("completion_tokens"),
             latency_ms=latency_ms,
         )
+
+    def _parse_sse(self, text: str, latency_ms: int) -> LLMResult | None:
+        """有几个中转/网关不管你传不传 `stream`，一律回 `data: {...}` 的分块流。
+
+        遇到这种响应不能判"无法解析"——它其实是有正文的，只是套了一层壳。
+        这里逐块找第一条带 choices 的，取到就返回。
+        """
+        for raw in text.splitlines():
+            line = raw.strip()
+            if not line.startswith("data:"):
+                continue
+            chunk = line[5:].strip()
+            if not chunk or chunk == "[DONE]":
+                continue
+            try:
+                data = json.loads(chunk)
+            except ValueError:
+                continue
+            result = self._result_from(data, latency_ms)
+            if result is not None:
+                return result
+        return None
+
+    def _parse(self, response: httpx.Response, latency_ms: int) -> LLMResult:
+        """解析成功响应。
+
+        报错时**必须带上服务端原话**：只回一句"无法解析的内容"，
+        用户既不知道是网关挡了、模型拒了，还是自己填错了（2026-10-21 真实踩到）。
+        """
+        text = response.text or ""
+        content_type = (response.headers.get("content-type") or "").lower()
+        if "text/event-stream" in content_type or text.lstrip().startswith("data:"):
+            result = self._parse_sse(text, latency_ms)
+            if result is not None:
+                return result
+            raise LLMError(
+                "http", "流式响应里没有找到正文", detail=_clean_detail(text) or "（空响应）"
+            )
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise LLMError("http", "响应不是 JSON", detail=_clean_detail(text)) from exc
+
+        if not isinstance(data, dict):
+            raise LLMError("http", "响应不是 JSON 对象", detail=_clean_detail(text))
+
+        # 有些网关用 200 回错误体：{"error": {"message": "..."}}
+        if data.get("error"):
+            raise LLMError(
+                "http",
+                "服务端用 200 回了错误",
+                detail=_error_detail(response) or _clean_detail(text),
+            )
+
+        result = self._result_from(data, latency_ms)
+        if result is not None:
+            return result
+
+        # 推理模型的典型症状：预算全花在 reasoning 上，正文留空。
+        # 这时别只说"正文是空的"——要告诉用户加预算或换普通模型。
+        choices = data.get("choices")
+        first = choices[0] if isinstance(choices, list) and choices else None
+        finish = first.get("finish_reason") if isinstance(first, dict) else None
+        message = first.get("message") if isinstance(first, dict) else None
+        has_reasoning = isinstance(message, dict) and bool(message.get("reasoning_content"))
+        if has_reasoning or finish == "length":
+            raise LLMError(
+                "http",
+                "模型把 max_tokens 用完就停了，正文是空的（推理模型会先想再答）",
+                detail=f"finish_reason={finish}",
+            )
+        reason = "响应里没有 choices" if not choices else "响应里的正文是空的"
+        raise LLMError("http", reason, detail=_clean_detail(text))

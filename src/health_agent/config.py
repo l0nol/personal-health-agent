@@ -16,7 +16,9 @@ from .errors import ConfigError
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
-DEFAULT_MODEL = "deepseek-chat"
+#: 默认模型。2026-10-21 用真实密钥核对：api.deepseek.com 实际可用的是
+#: `deepseek-flash` 与 `deepseek-v4-pro`（`deepseek-chat` 会报"模型不存在"）。
+DEFAULT_MODEL = "deepseek-flash"
 
 #: 界面上的服务商预设。**只是帮你把两个字段填好**，不是白名单——
 #: 任何 OpenAI 兼容端点（自建网关、本地 Ollama、其它云厂商）都能用，填自定义即可。
@@ -26,8 +28,8 @@ AI_PRESETS: tuple[dict[str, str], ...] = (
         "key": "deepseek",
         "label": "DeepSeek",
         "base_url": "https://api.deepseek.com/v1",
-        "model": "deepseek-chat",
-        "hint": "官方地址；模型可选 deepseek-chat / deepseek-reasoner",
+        "model": "deepseek-flash",
+        "hint": "官方地址；实测可用 deepseek-flash / deepseek-v4-pro（后者是推理模型）",
     },
     {
         "key": "dashscope",

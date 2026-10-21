@@ -19,6 +19,13 @@ from .http_client import ChatCompletionClient
 PROBE_SYSTEM = "你是一个连通性自检助手。"
 PROBE_USER = "回复两个字：可用"
 
+#: 试连的 token 上限。
+#: 原来给 16，本意是"花费可以忽略"，但推理模型（如 deepseek-v4-pro / reasoner 系列）
+#: 会先把预算全部花在思考上：实测 16 token 时 `reasoning_tokens=16`、`finish_reason=length`、
+#: `content` 为空，于是自检误报"正文是空的"（2026-10-21 真实踩到）。
+#: 256 是"够用且依然可忽略"的量级：实测一次约 150 tokens 封顶。
+PROBE_MAX_TOKENS = 256
+
 #: 4xx 的具体原因能省掉用户很多猜谜时间，这里只翻译最常见的那几个。
 _HTTP_HINTS = {
     400: "请求被拒（模型名或参数不被接受）",
@@ -49,6 +56,15 @@ _MODEL_MISSING_MARKERS = (
 def _looks_like_missing_model(detail: str) -> bool:
     lowered = (detail or "").lower()
     return any(marker in lowered for marker in _MODEL_MISSING_MARKERS)
+
+
+def _is_reasoning_budget_error(exc: LLMError) -> bool:
+    """推理模型把 max_tokens 全花在思考上，导致正文为空。
+
+    这**不是**连通性问题：地址、密钥、模型三项都已经对上了，只是这一次没来得及说话。
+    自检的目的是确认"能不能用"，所以这种情况算成功，但要如实说明。
+    """
+    return exc.kind == "http" and "max_tokens" in str(exc)
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +110,11 @@ def _describe(exc: LLMError, model: str = "") -> str:
         return "网络不通：请检查地址、代理与本机防火墙"
     if exc.kind == "config":
         return str(exc)
-    return "调用失败：服务端返回了无法解析的内容"
+    # 200 但内容不是约定格式：这种情况必须把服务端原话带出来，
+    # 否则用户只看到"无法解析的内容"，既不知道是网关挡了还是模型拒了。
+    reason = str(exc) or "服务端返回了无法解析的内容"
+    return f"{reason}{('：' + detail) if detail else '（响应体为空）'}"
+
 
 
 def probe_connection(
@@ -126,8 +146,16 @@ def probe_connection(
         return ProbeResult(False, str(exc), model=model)
 
     try:
-        result = client.complete(system=PROBE_SYSTEM, user=PROBE_USER, max_tokens=16)
+        result = client.complete(system=PROBE_SYSTEM, user=PROBE_USER, max_tokens=PROBE_MAX_TOKENS)
     except LLMError as exc:
+        if _is_reasoning_budget_error(exc):
+            # 地址、密钥、模型都对上了；只是这次预算不够说话。算连得上。
+            return ProbeResult(
+                True,
+                "已连通。这个模型是推理型，试连的 token 预算被思考过程用完了，所以没产出正文；"
+                "保存后可正常使用（分析与问答的预算都给得更宽）",
+                model=model,
+            )
         return ProbeResult(False, _describe(exc, model), model=model)
     except Exception as exc:  # noqa: BLE001 - 自检工具，绝不因为意外异常把页面打挂
         return ProbeResult(False, f"调用异常：{type(exc).__name__}", model=model)
