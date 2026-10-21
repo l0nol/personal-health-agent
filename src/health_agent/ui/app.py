@@ -947,12 +947,15 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
         preset = preset_by_key(preset_key)
         url = base_url.strip() or (preset["base_url"] if preset else "")
         name = model.strip() or (preset["model"] if preset else "")
+        filled = [label for label, value in (("地址", base_url), ("模型", model)) if value.strip()]
         if preset is None:
             note = "自定义接口"
-        elif not base_url.strip() and not model.strip():
+        elif not filled:
             note = f"按「{preset['label']}」预设填入地址与模型"
+        elif len(filled) == 2:
+            note = "地址与模型都用你填的值"
         else:
-            note = f"地址/模型以你填的为准（预设「{preset['label']}」只作参考）"
+            note = f"用你填的{filled[0]}，其余按「{preset['label']}」预设"
         return url, name, note
 
     @app.post("/settings/ai")
