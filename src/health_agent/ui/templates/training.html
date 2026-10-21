@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% from "_macros.html" import guidance_card %}
+{% block title %}训练记录{% endblock %}
+{% block content %}
+{% if prefill.get('from') == 'assistant' %}
+<p class="banner warn">下面是助手按今天的建议预填的内容，请核对并修改后再保存；不点保存就不会写入。</p>
+{% endif %}
+<header class="page-head">
+  <div>
+    <h1>训练记录</h1>
+    <p class="sub">近 7 天 {{ week_count }} 次 · 累计 {{ total_count }} 次 · 当前查看近 {{ days }} 天</p>
+  </div>
+  <a class="btn secondary" href="/">返回首页</a>
+</header>
+
+{{ guidance_card(guidance) }}
+
+<div class="grid-2">
+  <section class="card">
+    <h2>记一次训练</h2>
+    <form method="post" action="/training/add" class="form-grid">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="next" value="/training">
+      <label>日期
+        <input type="date" name="session_date" value="{{ today }}" required>
+      </label>
+      <label>类型
+        <select name="activity_type" required>
+          {% for value in activity_types %}
+          <option value="{{ value }}" {% if prefill.get('type') == value %}selected{% endif %}>{{ activity_labels[value] }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>部位
+        <input type="text" name="body_parts" placeholder="胸,肩 / legs,core（可留空）" value="{{ prefill.get('parts', '') }}">
+      </label>
+      <label>时长（分钟）
+        <input type="number" name="duration_minutes" min="1" max="600" placeholder="可留空" value="{{ prefill.get('duration', '') }}">
+      </label>
+      <label>主观强度（1–10）
+        <input type="number" name="perceived_intensity" min="1" max="10" placeholder="可留空">
+      </label>
+      <label>完成度
+        <select name="completion">
+          {% for value, label in completion_labels.items() %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="span-2">内容
+        <input type="text" name="content" placeholder="卧推 3×8，划船 3×10（可留空）" value="{{ prefill.get('content', '') }}">
+      </label>
+      <label class="span-2">备注
+        <input type="text" name="notes" placeholder="可留空">
+      </label>
+      <div class="form-actions span-2">
+        <button type="submit">保存训练</button>
+        <span class="note">时长、强度、部位都可以留空；留空就是 NULL，不是 0。</span>
+      </div>
+    </form>
+  </section>
+
+  <section class="card" id="feedback">
+    <h2>今天的状态</h2>
+    {% set e = feedback.energy if feedback else none %}
+    {% set f = feedback.fatigue if feedback else none %}
+    {% set sl = feedback.soreness_level if feedback else none %}
+    <p class="note">
+      {% if feedback %}
+      今天已记录（{{ feedback.feedback_date }}）；再次提交会覆盖更新。
+      {% else %}
+      全部可留空。记录后，建议会明确说明依据来自你的主观反馈。
+      {% endif %}
+    </p>
+    <form method="post" action="/training/feedback" class="form-grid">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="next" value="/training">
+      <input type="hidden" name="feedback_date" value="{{ today }}">
+
+      <label>精力（1 最低，5 最好）
+        <select name="energy">
+          <option value="">不填</option>
+          {% for value in [1, 2, 3, 4, 5] %}
+          <option value="{{ value }}" {% if e == value %}selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>疲劳（1 不累，5 很累）
+        <select name="fatigue">
+          <option value="">不填</option>
+          {% for value in [1, 2, 3, 4, 5] %}
+          <option value="{{ value }}" {% if f == value %}selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>酸痛部位
+        <input type="text" name="soreness_parts" placeholder="胸,肩（可留空）"
+               value="{{ feedback.soreness_labels|join(',') if feedback else '' }}">
+      </label>
+      <label>酸痛程度（1–5）
+        <select name="soreness_level">
+          <option value="">不填</option>
+          {% for value in [1, 2, 3, 4, 5] %}
+          <option value="{{ value }}" {% if sl == value %}selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="span-2 check-line">
+        <input type="checkbox" name="discomfort" value="1"
+               {% if feedback and feedback.discomfort %}checked{% endif %}>
+        今天有疼痛、眩晕、明显气短或其他明显不适
+      </label>
+      <label class="span-2">不适说明（可留空）
+        <input type="text" name="discomfort_note" placeholder="例如：站起来有点晕"
+               value="{{ feedback.discomfort_note if feedback and feedback.discomfort_note else '' }}">
+      </label>
+      <div class="form-actions span-2">
+        <button type="submit">保存状态</button>
+        <span class="note">酸痛部位与程度需要同时填或同时留空。</span>
+      </div>
+    </form>
+  </section>
+</div>
+
+<section class="card">
+  <h2>训练偏好</h2>
+  <p class="note">全部可选。偏好只影响建议的时长、频率与避练动作，不改变任何设备数据。</p>
+  <form method="post" action="/training/prefs" class="form-grid">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="next" value="/training">
+    <label>每周训练日（1–7）
+      <input type="number" name="days_per_week" min="1" max="7"
+             value="{{ prefs.days_per_week if prefs.days_per_week is not none else '' }}">
+    </label>
+    <label>单次时间预算（分钟）
+      <input type="number" name="time_budget_minutes" min="5" max="240"
+             value="{{ prefs.time_budget_minutes if prefs.time_budget_minutes is not none else '' }}">
+    </label>
+    <label>可用器材
+      <input type="text" name="equipment" placeholder="哑铃, 弹力带"
+             value="{{ prefs.equipment|join(', ') }}">
+    </label>
+    <label>希望避免的动作
+      <input type="text" name="avoid_movements" placeholder="跳箱, 深蹲跳"
+             value="{{ prefs.avoid_movements|join(', ') }}">
+    </label>
+    <div class="form-actions span-2">
+      <button type="submit">保存偏好</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>最近训练</h2>
+    <a class="link" href="/training?days=90">近 90 天</a>
+  </div>
+  {% if sessions %}
+  <table class="table">
+    <thead>
+      <tr><th>日期</th><th>类型</th><th>部位</th><th class="num">时长</th><th class="num">强度</th><th>完成</th><th>操作</th></tr>
+    </thead>
+    <tbody>
+      {% for session in sessions %}
+      <tr>
+        <td>{{ session.session_date }}</td>
+        <td>{{ session.activity_label }}</td>
+        <td>{% if session.body_part_labels %}{{ session.body_part_labels|join(' / ') }}{% else %}<span class="muted">未填</span>{% endif %}</td>
+        <td class="num">{% if session.duration_minutes %}{{ session.duration_minutes }} 分钟{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="num">{% if session.perceived_intensity %}{{ session.perceived_intensity }}/10{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{{ completion_labels.get(session.completion, session.completion) }}</td>
+        <td>
+          <form method="post" action="/training/{{ session.session_id }}/delete" class="inline-form">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="mini danger" type="submit">删除</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    <p class="empty-title">还没有训练记录</p>
+    <p class="empty-text">记 1–2 次之后，建议会开始判断"近期练过哪些部位"，并给出替代部位。</p>
+  </div>
+  {% endif %}
+</section>
+
+<p class="legend">
+  训练日志是主观记录，不是设备测量；不会写入设备指标，也不会被当成"疲劳值"。
+</p>
+{% endblock %}
