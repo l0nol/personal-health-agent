@@ -27,8 +27,8 @@ cd personal-health-agent
 | 2 | 依赖包 | 运行 | ✅ 已装（`requirements-dev.txt`） | `.venv/Scripts/python.exe -m pip install -r requirements-dev.txt` |
 | 3 | 数据库 | 存数据 | ✅ 自动建（11 表 / 40 指标） | 删 `data/health.db` 后重跑 `init` |
 | 4 | 浏览器 | 看界面 | ✅ Chrome / Edge / 华为浏览器 | 建议 Chromium 105+（表盘用到 `aspect-ratio`、`:focus-visible`） |
-| 5 | 访问密码 | 局域网/平板访问 | ⬜ 可选，本机用不需要 | `.venv/Scripts/python.exe -m health_agent.cli passwd`，把输出写入 `.env` |
-| 6 | 局域网开启 | 平板访问 | ⬜ 默认关闭 | `.env` 加 `HEALTH_AGENT_LAN=1` + 密码，重启 |
+| 5 | 访问密码 | 局域网/平板访问 | ✅ 已设置（2026-10-21，写入 `.env` 的 `HEALTH_AGENT_PASSWORD_HASH`） | 换密码：`cli passwd` 生成新 hash 覆盖那一行，重启 |
+| 6 | 局域网开启 | 平板访问 | ✅ 已开启（2026-10-21，`LAN=1` + `HOST=0.0.0.0`），已验证局域网 IP 可达 | 关掉：`.env` 改 `LAN=0` 与 `HOST=127.0.0.1`，重启 |
 | 7 | 平板 | 触控与窄屏实测 | ⬜ 设备已定：联想 Yoga Pad Pro 12.7（元启版） | 按 `docs/03-tablet-access.md` §5 的三项设置 + 十项验证表执行；重点看联想浏览器内核 ≥88 |
 | 8 | 真实健康数据 | 替换示例数据 | ⬜ **缺素材** | 华为运动健康截图 → 按下表字段提取 CSV/JSON |
 | 9 | AI 密钥 | 简报 AI 改写 | ⬜ 可选，不填就用本地模板文案 | 界面「设置 → AI 分析接口」填完点保存（立即生效）；或 `.env` 里写 `AI_API_KEY=...` |
