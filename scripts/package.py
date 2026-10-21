@@ -30,7 +30,6 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from health_agent import __version__ as VERSION  # noqa: E402  版本只有一处事实源
 from health_agent.catalog import METRICS  # noqa: E402
-from health_agent.catalog import METRICS  # noqa: E402
 
 PRODUCT = "personal-health-agent"
 
@@ -59,8 +58,9 @@ FORBIDDEN_PARTS = (
     "data",
 )
 
-#: 任何层级都不允许出现的文件类型。
-FORBIDDEN_SUFFIXES = (".db", ".db-wal", ".db-shm", ".pyc", ".zip", ".bak")
+#: 任何层级都不允许出现的文件类型（图片一律排除：截图可能含健康信息，且已被 .gitignore 排除）。
+FORBIDDEN_SUFFIXES = (".db", ".db-wal", ".db-shm", ".pyc", ".zip", ".bak",
+                      ".png", ".jpg", ".jpeg", ".gif", ".heic", ".ico")
 
 MAX_SINGLE_FILE_BYTES = 512 * 1024
 
@@ -187,7 +187,7 @@ def build_manifest(files: list[Path], test_result: dict | None) -> dict:
 
 START_HERE = """# 00 · 从这里开始
 
-这是一个**本地优先的个人健康数据管理工具**的完整交付包（v0.1.2）。
+这是一个**本地优先的个人健康数据管理工具**的完整交付包（v0.1.3）。
 P0 功能（任务 0–7）已完成；界面为 FastAPI + Jinja2 服务端渲染，图表是手写 SVG，无前端框架、无图表库。
 本文件是给审阅者/验证者的入口，10 分钟内可以走完。
 
@@ -230,12 +230,12 @@ python -m venv .venv
 按顺序看：`/imports` 上传 → 预览 → 写入；`/records` 确认；`/reports` 看简报与来源；
 `/alerts` 点「立即评估」。
 
-新界面（0.1.2）：
+新界面（0.1.3）：
 
 - `/` 今日摘要：4 张指标卡（值/单位/有效天数/状态点）、睡眠柱状图 + 目标虚线、待处理
 - `/sleep` 睡眠分析：缺失日画空心柱；阶段比例只显示设备给的，不换算
 - `/trends` 指标趋势：选 `hrv_min_ms` 或 `spo2_min_percent` 会看到**区间带**，且统计区没有"均值"
-- `/chronos` 时钟模式 Demo：6 扇区外环 + 中心摘要 + 普通入口（键盘 Tab 可达）
+- `/chronos` 六刻度生产拨盘（T11）：6 扇区外环 + 中心助手 + 普通入口（键盘 Tab 可达）
 
 `docs/preview/` 下有三份静态 HTML（内联样式），不装 Python 也能看版式。
 
@@ -273,7 +273,7 @@ pyproject.toml         包元数据（pytest 配置里已设 pythonpath=src）
 requirements.txt       运行时依赖（5 个）
 requirements-dev.txt   开发依赖（+pytest，版本锁死）
 .env.example           全部配置项，含注释；不含任何真实密钥
-src/health_agent/      源码（约 4.4k 行）
+src/health_agent/      源码（约 8.9k 行）
   catalog.py           @@METRICS@@ 个指标的唯一事实源
   validation/          单位白名单、单行校验（纯函数）
   storage/             SQLite 迁移、repository、状态机、备份
@@ -283,7 +283,7 @@ src/health_agent/      源码（约 4.4k 行）
   ai_client/           接口契约、HTTP 客户端、缓存、降级
   reports/             日报周报 + 数字追溯
   ui/                  FastAPI + Jinja2；charts.py 是纯几何 SVG；10 个模板 + 宏
-tests/                 @@TESTS@@ 条测试，8 个文件
+tests/                 @@TESTS@@ 条测试，26 个文件
 test_data/             2 份虚构样例（正常 + 10 条各类异常）
 docs/
   00-architecture-plan-v1.md   方案与 4 个规格冲突的裁决 + 修订记录
@@ -339,15 +339,6 @@ scripts/gen_data_dictionary.py  数据字典重生成
 6. `src/health_agent/rules/engine.py` —— 提醒条件与冷却
 7. `src/health_agent/ai_client/summarizer.py` —— 降级路径
 """
-
-
-def render_template(text: str, manifest: dict) -> str:
-    """把模板里的占位符换成实际数字，避免测试数/指标数一变就要手改文档。"""
-    tests = (manifest.get("tests") or {}).get("passed")
-    return (
-        text.replace("@@TESTS@@", str(tests if tests is not None else "未运行"))
-        .replace("@@METRICS@@", str(len(METRICS)))
-    )
 
 
 def render_template(text: str, manifest: dict) -> str:
@@ -462,7 +453,7 @@ def build_bundle(files: list[Path], manifest: dict) -> str:
 
 VERIFY_PROMPT = """# 给审阅模型的验证指令（可直接粘贴）
 
-你收到的是 `personal-health-agent` v0.1.0 的交付包（或它的源码合订本）。
+你收到的是 `personal-health-agent` v0.1.3 的交付包（或它的源码合订本）。
 这是一个本地优先的个人健康数据管理工具，请按下面的顺序验证，**不要改代码**，只出结论。
 
 ## 背景边界（先接受这三条，再评判）

@@ -95,6 +95,57 @@
 </a>
 {%- endmacro %}
 
+{% macro guidance_card(g) -%}
+{# 今日建议卡：结论、依据、不确定性、边界全部来自 guidance.contract，模板不另算一套 #}
+<section class="card guidance-card cat-{{ g.category }}">
+  <div class="guidance-head">
+    <div>
+      <p class="eyebrow">今日建议 · {{ g.for_date }} · 规则 {{ g.rule_version }}</p>
+      <h2>{{ g.headline }}</h2>
+      <p class="guidance-focus">{{ g.focus }}</p>
+    </div>
+    <span class="guidance-badge">{{ g.category_label }}</span>
+  </div>
+
+  {% if g.evidence %}
+  <ul class="guidance-facts">
+    {% for item in g.evidence[:3] %}
+    <li>
+      <span class="fact-label">{{ item.label }}</span>
+      <span class="fact-value">{{ item.value_text }}</span>
+      <span class="fact-coverage">覆盖 {{ item.coverage }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if g.uncertainty %}
+  <p class="note">还不确定：{{ g.uncertainty[0] }}{% if g.uncertainty|length > 1 %}（共 {{ g.uncertainty|length }} 项，见「为什么」）{% endif %}</p>
+  {% endif %}
+
+  <details class="why">
+    <summary>为什么这样建议</summary>
+    <p>{{ g.local_explanation }}</p>
+    {% if g.alternatives %}
+    <p class="why-sub">替代项</p>
+    <ul>{% for item in g.alternatives %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if g.uncertainty %}
+    <p class="why-sub">不确定性</p>
+    <ul>{% for item in g.uncertainty %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% endif %}
+    <p class="why-sub">边界</p>
+    <ul>{% for item in g.limitations %}<li>{{ item }}</li>{% endfor %}</ul>
+  </details>
+
+  <div class="guidance-actions">
+    <a class="btn secondary" href="/training#feedback">记录今天状态</a>
+    <a class="btn ghost" href="/training">训练记录</a>
+  </div>
+  <p class="safety">{{ g.safety_notice }}</p>
+</section>
+{%- endmacro %}
+
 {% macro chart(model) -%}
 {% if not model.has_data %}
   {{ empty_state('这段时间没有已确认数据', '待确认或缺失的数据不会进入图表。') }}

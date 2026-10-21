@@ -110,15 +110,18 @@ def test_trends_page_unknown_metric_falls_back(tmp_path):
 
 
 def test_chronos_page_structure(tmp_path):
-    """T05：六扇区单选表盘 + 中心预览 + 普通入口；扇区本身不再直接跳转。"""
+    """T11：六刻度单选拨盘 + 中心预览/助手 + 普通入口；刻度本身不再直接跳转。"""
     with _client(tmp_path) as client:
         body = client.get("/chronos").text
 
     assert "表盘导航" in body
     assert "普通入口" in body
-    assert body.count('class="sector"') == 6
-    assert body.count('class="sector-input"') == 6
+    assert body.count('class="dial-fbtn"') == 6
+    # 6 个刻度 + 闲置 + 助手
+    assert body.count('class="sector-input"') == 8
     assert body.count('class="core-enter"') == 6
+    assert body.count('class="core-card"') == 6
+    assert 'class="dial-orb"' in body  # 闲置态助手球
 
 
 def test_mode_switch_persists_and_changes_home(tmp_path):

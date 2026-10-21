@@ -19,11 +19,23 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import __version__
+from ..ai_client.probe import probe_connection
 from ..ai_client.summarizer import SOURCE_TEMPLATE, Narrative, peek_cached, rewrite_report
 from ..analytics.aggregate import load_points, range_days, summarize, weekly_buckets
 from ..analytics.quality import summarize_quality
 from ..catalog import METRICS, RANGE_BOUND_METRICS, get_metric
-from ..config import Settings, load_settings
+from ..config import (
+    AI_PRESETS,
+    Settings,
+    active_preset_key,
+    ai_env_override_keys,
+    load_settings,
+    preset_by_key,
+    save_ai_config,
+)
+from ..errors import ConfigError
+from ..guidance.engine import build_guidance
+from ..guidance.engine import config_from_settings as guidance_config_from_settings
 from ..ingestion.batch import commit_import
 from ..ingestion.loader import LoadError, file_sha256, load_rows
 from ..ingestion.preview import build_preview, render_text
@@ -32,11 +44,21 @@ from ..reports.format import format_number
 from ..rules.engine import config_from_settings, describe_sleep_target, run as run_rules
 from ..storage import alerts as alert_store
 from ..storage import lifecycle, preferences, repository
+from ..storage import training as training_store
 from ..storage.db import connect, current_version, init_db
 from ..storage.exporting import delete_record, export_csv, export_json
+from ..training import service as training_service
+from ..training.errors import TrainingValidationError
+from ..training.models import ACTIVITY_LABELS, ACTIVITY_TYPES, COMPLETION_LABELS
 from .auth import SESSION_COOKIE, SessionSigner, load_secret, verify_password
 from .charts import BandPoint, SeriesPoint, build_band, build_bars, build_line
-from .context import chronos_sectors, dashboard_tiles, metric_labels, reference
+from .context import (
+    assistant_shortcuts,
+    chronos_sectors,
+    dashboard_tiles,
+    metric_labels,
+    reference,
+)
 from .pages import DIAL_PAGES, link_grid_pages, nav_groups
 
 METRICS_BY_NAME = {metric.name: metric for metric in METRICS}
@@ -219,6 +241,9 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
                                  target=float(config.sleep_target_minutes), height=150)
         if mode == "chronos":
             # 与 /chronos 路由同一套上下文（tiles/sectors 同源），否则表盘会空转
+            home_guidance = build_guidance(
+                conn, for_date=date.today(), config=guidance_config_from_settings(settings)
+            )
             return render(
                 request,
                 "chronos.html",
@@ -227,13 +252,21 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
                 conflicts=conflicts,
                 unread_alerts=unread_alerts,
                 tiles=tiles,
-                sectors=chronos_sectors(tiles, counts, conflicts, unread_alerts, end),
+                sectors=chronos_sectors(
+                    conn, tiles, counts, conflicts, unread_alerts, end, guidance=home_guidance
+                ),
+                shortcuts=assistant_shortcuts(home_guidance, {"training": "/training", "sleep": "/sleep", "alerts": "/alerts"}),
+                selected="",
                 end_day=end.isoformat(),
             )
         recent = _items(repository.list_records(conn, limit=10))
         batches = conn.execute(
             "SELECT * FROM import_batches ORDER BY imported_at DESC LIMIT 5"
         ).fetchall()
+        today = date.today()
+        guidance = build_guidance(
+            conn, for_date=today, config=guidance_config_from_settings(settings)
+        )
         return render(
             request,
             "index.html",
@@ -249,6 +282,10 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             target_text=describe_sleep_target(config),
             end_day=end.isoformat(),
             total_records=counts["total"],
+            guidance=guidance,
+            today=today.isoformat(),
+            activity_types=ACTIVITY_TYPES,
+            activity_labels=ACTIVITY_LABELS,
         )
 
     # ---------------- 记录 ----------------
@@ -698,11 +735,119 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             end_day=end.isoformat(),
         )
 
+    # ---------------- 训练记录（T10） ----------------
+
+    def _training_redirect_target(raw: str | None) -> str:
+        """只允许从训练页返回首页或训练页，避免被当成开放跳转。"""
+        target = _safe_next(raw or "/training")
+        return target if target in {"/", "/training"} else "/training"
+
+    @app.get("/training", response_class=HTMLResponse)
+    def training_page(request: Request, conn=Depends(get_db), days: int = 30):
+        days = days if days in {7, 30, 90} else 30
+        today = date.today()
+        start = today - timedelta(days=days - 1)
+        sessions = training_store.list_sessions(conn, start=start, end=today, limit=100)
+        feedback = training_store.get_feedback(conn, today)
+        prefs = training_store.get_preferences(conn)
+        guidance = build_guidance(
+            conn, for_date=today, config=guidance_config_from_settings(settings)
+        )
+        # 助手预填：只出现在表单里，落库仍需用户点「保存」（POST + CSRF + 校验）
+        prefill = {
+            key: request.query_params.get(key, "")
+            for key in ("from", "type", "parts", "duration", "content", "focus")
+        }
+        return render(
+            request,
+            "training.html",
+            prefill=prefill,
+            days=days,
+            today=today.isoformat(),
+            sessions=sessions,
+            feedback=feedback,
+            prefs=prefs,
+            guidance=guidance,
+            week_count=training_store.count_sessions(
+                conn, start=today - timedelta(days=6), end=today
+            ),
+            total_count=training_store.count_sessions(conn),
+            activity_types=ACTIVITY_TYPES,
+            activity_labels=ACTIVITY_LABELS,
+            completion_labels=COMPLETION_LABELS,
+        )
+
+    @app.post("/training/add")
+    async def training_add(request: Request, conn=Depends(get_db)):
+        form = await request.form()
+        target = _training_redirect_target(form.get("next"))
+        try:
+            session = training_service.add_session(
+                conn,
+                session_date=str(form.get("session_date") or date.today().isoformat()),
+                activity_type=str(form.get("activity_type") or ""),
+                body_parts=str(form.get("body_parts") or ""),
+                content=str(form.get("content") or ""),
+                duration_minutes=form.get("duration_minutes"),
+                perceived_intensity=form.get("perceived_intensity"),
+                completion=str(form.get("completion") or "completed"),
+                started_at=form.get("started_at"),
+                notes=form.get("notes"),
+            )
+        except TrainingValidationError as exc:
+            return go(f"{target}?error=" + quote(str(exc)))
+        label = ACTIVITY_LABELS.get(session.activity_type, session.activity_type)
+        return go(f"{target}?msg=" + quote(f"已记录：{label} {session.session_date}"))
+
+    @app.post("/training/feedback")
+    async def training_feedback(request: Request, conn=Depends(get_db)):
+        form = await request.form()
+        target = _training_redirect_target(form.get("next"))
+        try:
+            training_service.record_feedback(
+                conn,
+                feedback_date=str(form.get("feedback_date") or date.today().isoformat()),
+                energy=form.get("energy"),
+                fatigue=form.get("fatigue"),
+                soreness_parts=form.get("soreness_parts"),
+                soreness_level=form.get("soreness_level"),
+                discomfort=form.get("discomfort") is not None,
+                discomfort_note=form.get("discomfort_note"),
+            )
+        except TrainingValidationError as exc:
+            return go(f"{target}?error=" + quote(str(exc)))
+        return go(f"{target}?msg=" + quote("已记录今天的状态；同日再次提交会覆盖更新"))
+
+    @app.post("/training/prefs")
+    async def training_prefs(request: Request, conn=Depends(get_db)):
+        form = await request.form()
+        target = _training_redirect_target(form.get("next"))
+        try:
+            training_service.save_preferences(
+                conn,
+                equipment=form.get("equipment"),
+                days_per_week=form.get("days_per_week"),
+                time_budget_minutes=form.get("time_budget_minutes"),
+                avoid_movements=form.get("avoid_movements"),
+            )
+        except TrainingValidationError as exc:
+            return go(f"{target}?error=" + quote(str(exc)))
+        return go(f"{target}?msg=" + quote("已保存训练偏好"))
+
+    @app.post("/training/{session_id}/delete")
+    def training_delete(session_id: str, request: Request, conn=Depends(get_db)):
+        try:
+            training_service.remove_session(conn, session_id)
+        except TrainingValidationError as exc:
+            return go("/training?error=" + quote(str(exc)))
+        return go("/training?msg=" + quote("已删除训练记录"))
+
     @app.get("/chronos", response_class=HTMLResponse)
-    def chronos(request: Request, conn=Depends(get_db)):
+    def chronos(request: Request, conn=Depends(get_db), s: str = ""):
         end = latest_data_date(conn) or date.today()
         tiles = dashboard_tiles(conn, end)
         counts = {
+            "total": repository.count_records(conn),
             "pending": repository.count_records(conn, status="pending"),
             "confirmed": repository.count_records(conn, status="confirmed"),
         }
@@ -710,12 +855,22 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             "SELECT COUNT(*) AS n FROM conflicts WHERE resolution = 'pending'"
         ).fetchone()["n"]
         unread = alert_store.count_unread(conn)
+        dial_guidance = build_guidance(
+            conn, for_date=date.today(), config=guidance_config_from_settings(settings)
+        )
+        valid = {page.key for page in DIAL_PAGES}
         return render(
             request,
             "chronos.html",
             mode=ui_mode(conn),
             tiles=tiles,
-            sectors=chronos_sectors(tiles, counts, conflicts, unread, end),
+            sectors=chronos_sectors(
+                conn, tiles, counts, conflicts, unread, end, guidance=dial_guidance
+            ),
+            shortcuts=assistant_shortcuts(
+                dial_guidance, {"training": "/training", "sleep": "/sleep", "alerts": "/alerts"}
+            ),
+            selected=s if s in valid else "",
             counts=counts,
             conflicts=conflicts,
             unread_alerts=unread,
@@ -756,6 +911,14 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             values=preferences.get_settings(conn),
             keys=preferences.ALLOWED_KEYS,
             ai_enabled=settings.ai_enabled,
+            ai_presets=AI_PRESETS,
+            ai_preset=active_preset_key(settings),
+            ai_key_tail=settings.ai_key_tail,
+            ai_base_url=settings.ai_base_url,
+            ai_model=settings.ai_model,
+            ai_timeout=int(settings.ai_timeout_seconds),
+            ai_env_path=str(settings.env_path),
+            ai_shadowed=ai_env_override_keys(),
             lan_enabled=settings.lan_enabled,
             sleep_target=describe_sleep_target(config_from_settings(settings)),
             mode=ui_mode(conn),
@@ -771,6 +934,102 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
         values = {key: str(form.get(key, "")) for key in preferences.ALLOWED_KEYS}
         preferences.set_settings(conn, values)
         return go("/settings?msg=" + quote("已保存（留空表示不设置）"))
+
+    # ---------------- AI 接口配置 ----------------
+
+    def _ai_inputs(preset_key: str, base_url: str, model: str) -> tuple[str, str, str]:
+        """把"预设 + 两个可留空字段"解析成最终生效的地址与模型。
+
+        零 JS 的取舍：选预设没法自动把值填进输入框（没脚本做不了实时联动），
+        所以约定成"留空即取预设值"——自己填了就以自己填的为准。两个方向都不打架，
+        也不用假装有联动。返回的第三项是给用户看的解析说明，不参与任何判断。
+        """
+        preset = preset_by_key(preset_key)
+        url = base_url.strip() or (preset["base_url"] if preset else "")
+        name = model.strip() or (preset["model"] if preset else "")
+        if preset is None:
+            note = "自定义接口"
+        elif not base_url.strip() and not model.strip():
+            note = f"按「{preset['label']}」预设填入地址与模型"
+        else:
+            note = f"地址/模型以你填的为准（预设「{preset['label']}」只作参考）"
+        return url, name, note
+
+    @app.post("/settings/ai")
+    def settings_ai_save(
+        request: Request,
+        action: str = Form("save"),
+        preset: str = Form("custom"),
+        api_key: str = Form(""),
+        base_url: str = Form(""),
+        model: str = Form(""),
+        clear_key: str = Form(""),
+    ):
+        """保存或试连 AI 接口。
+
+        - `action=test`：**只试不发**，不写文件也不落任何调用记录
+        - `action=save`：写 `.env` 后立刻重新装载，无需重启
+        - 密钥三种语义：填了新值 → 覆盖；勾了"清除" → 删掉；都空 → 保持原样
+        """
+        nonlocal settings
+        url, name, note = _ai_inputs(preset, base_url, model)
+        key = api_key.strip()
+
+        if not url.startswith(("http://", "https://")):
+            return go("/settings?error=" + quote("接口地址必须以 http:// 或 https:// 开头"))
+        if not name:
+            return go("/settings?error=" + quote("模型名不能为空"))
+
+        if action == "test":
+            # 走线程池（本函数是同步 def，FastAPI 已替我们放到线程里），不阻塞事件循环
+            result = probe_connection(
+                api_key=key or (settings.ai_api_key or ""),
+                base_url=url,
+                model=name,
+                timeout=min(max(settings.ai_timeout_seconds, 5.0), 20.0),
+            )
+            text = f"测试连接（{note}）：{result.headline} · {result.message}"
+            if result.latency_ms is not None:
+                text += f" · {result.latency_ms} ms"
+            if result.ok:
+                text += "。确认无误后点「保存」写入配置。"
+            return go(("/settings?msg=" if result.ok else "/settings?error=") + quote(text))
+
+        if clear_key:
+            new_key: str | None = ""
+        elif key:
+            new_key = key
+        else:
+            new_key = None
+
+        try:
+            save_ai_config(settings.env_path, api_key=new_key, base_url=url, model=name)
+        except OSError as exc:
+            return go(
+                "/settings?error="
+                + quote(f"写入 {settings.env_path.name} 失败：{type(exc).__name__}")
+            )
+
+        try:
+            reloaded = load_settings(project_root=settings.env_path.parent)
+        except ConfigError as exc:
+            return go("/settings?error=" + quote(f"配置已写入，但重新装载失败：{exc}"))
+
+        settings = reloaded
+        request.app.state.settings = reloaded
+
+        message = "已保存并立即生效（" + note + "）"
+        if new_key is None:
+            message += "；密钥未改动"
+        elif new_key == "":
+            message += "；已清除密钥，简报将使用本地文案"
+        shadowed = ai_env_override_keys()
+        if shadowed:
+            message += (
+                f"；注意：{'、'.join(shadowed)} 在当前进程环境变量里也有值，"
+                "环境变量优先于 .env，这项改动可能不生效"
+            )
+        return go("/settings?msg=" + quote(message))
 
     # ---------------- 导出 ----------------
 

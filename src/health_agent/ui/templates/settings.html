@@ -28,6 +28,84 @@
 </section>
 
 <section class="card">
+  <h2>AI 分析接口</h2>
+  <p class="muted">
+    简报里"把数据讲成人话"那一步可以交给大模型。不配置也完全能用——系统会退回本地文案，
+    统计、趋势与提醒不受任何影响。任何 OpenAI 兼容接口都能接，不限某一家。
+  </p>
+
+  <dl class="kv">
+    <dt>当前状态</dt>
+    <dd>
+      {% if ai_enabled %}已启用 · 模型 <code>{{ ai_model }}</code>{% if ai_key_tail %} · 密钥尾号 <code>••••{{ ai_key_tail }}</code>{% endif %}
+      {% else %}未启用（使用本地文案）{% endif %}
+    </dd>
+    <dt>接口地址</dt><dd><code>{{ ai_base_url }}</code></dd>
+    <dt>超时</dt><dd>{{ ai_timeout }} 秒</dd>
+    <dt>配置文件</dt><dd><code>{{ ai_env_path }}</code></dd>
+  </dl>
+
+  {% if ai_shadowed %}
+  <p class="banner warn">
+    进程环境变量里已经有 {{ ai_shadowed|join('、') }}，它的优先级高于配置文件。
+    要让本页的修改真正生效，请先去掉这些环境变量再启动。
+  </p>
+  {% endif %}
+
+  <form method="post" action="/settings/ai">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+
+    <label>服务商
+      <select name="preset">
+        {% for preset in ai_presets %}
+        <option value="{{ preset.key }}" {% if ai_preset == preset.key %}selected{% endif %}>{{ preset.label }}</option>
+        {% endfor %}
+        <option value="custom" {% if ai_preset == 'custom' %}selected{% endif %}>自定义 / 其他 OpenAI 兼容接口</option>
+      </select>
+    </label>
+    <label>接口地址（Base URL）
+      <input type="text" name="base_url" value="{{ ai_base_url }}" placeholder="https://api.deepseek.com/v1" autocomplete="off" spellcheck="false">
+    </label>
+    <label>模型名
+      <input type="text" name="model" value="{{ ai_model }}" placeholder="deepseek-chat" autocomplete="off" spellcheck="false">
+    </label>
+    <label>API 密钥
+      <input type="password" name="api_key" value="" autocomplete="new-password" spellcheck="false"
+             placeholder="{% if ai_enabled %}已保存，留空表示不修改{% else %}粘贴密钥，例如 sk-…{% endif %}">
+    </label>
+    {% if ai_enabled %}
+    <label><input type="checkbox" name="clear_key" value="1"> 清除已保存的密钥</label>
+    {% endif %}
+
+    <p class="hint">
+      选择服务商后，上面两项<strong>留空就等于用该服务商的预设值</strong>；自己填了则以你填的为准。
+      填完可以先点「测试连接」试一次——它只发一句"回复两个字"，不保存、不写任何记录、不产生分析。
+    </p>
+
+    <div class="form-actions">
+      <button type="submit" name="action" value="save">保存</button>
+      <button type="submit" name="action" value="test" class="btn secondary">测试连接（不保存）</button>
+    </div>
+  </form>
+
+  <details class="ref-detail">
+    <summary>各服务商参考地址（可能随服务商调整，以官方文档为准）</summary>
+    <ul class="hint">
+      {% for preset in ai_presets %}
+      <li>
+        <strong>{{ preset.label }}</strong>：<code>{{ preset.base_url }}</code> · 默认模型 <code>{{ preset.model }}</code>{% if preset.hint %} —— {{ preset.hint }}{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+
+  <p class="hint">
+    保存后立即生效，不用重启。密钥只会写进本机 <code>{{ ai_env_path }}</code>（尽量设为仅本人可读），
+    页面上永远只显示尾号；发给模型的只有已经算好的摘要，不含记录 ID 与截图。
+  </p>
+</section>
+
+<section class="card">
   <h2>生活背景</h2>
   <form method="post" action="/settings">
     <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -79,7 +157,7 @@
   <p><a href="/export.csv">导出全部记录 CSV</a> · <a href="/export.json">导出 JSON</a></p>
   <p class="hint">备份 / 恢复：命令行 <code>python -m health_agent.cli backup</code>（恢复加 <code>--force</code>，替换前会先留 <code>.bak</code>），步骤见 <code>docs/02-runbook.md</code> §5。本页不放一键备份按钮——备份要写整个数据目录，误触代价比多点几步大。</p>
   <p class="hint">数据只保存在本机（{{ db_path }}），不上传任何服务器。配置了 AI 密钥时，也只有已算好的摘要会发给模型，不含记录 ID 与截图。</p>
-  <p class="hint">密钥只在环境变量里配置，不会出现在本页或日志中。</p>
+  <p class="hint">密钥保存后不会以任何形式回显（只显示尾号），也不会写进日志、导出文件或页面源码。</p>
   <p class="hint">删除整个数据库请直接删除数据目录下的 health.db 文件（应用需先停止）。</p>
 </section>
 
@@ -91,7 +169,7 @@
     <dt>数据库</dt><dd>{{ db_path }}</dd>
     <dt>局域网访问</dt><dd>{{ '开启（需要密码）' if lan_enabled else '关闭（仅本机）' }}</dd>
     <dt>AI 分析</dt>
-    <dd>{% if ai_enabled %}已配置密钥{% else %}未配置，简报将使用本地模板文案；要启用就在项目根目录 `.env` 里填写 <code>DEEPSEEK_API_KEY</code> 后重启{% endif %}</dd>
+    <dd>{% if ai_enabled %}已配置密钥（模型 <code>{{ ai_model }}</code>），可在上方「AI 分析接口」里更换{% else %}未配置，简报使用本地模板文案；在「AI 分析接口」里填好密钥即可启用{% endif %}</dd>
   </dl>
 </section>
 {% endblock %}

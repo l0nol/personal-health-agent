@@ -288,3 +288,40 @@
 - **未验证**：联想浏览器真机内核版本与实际渲染；12.7 英寸横竖屏；字体放大一档的实际溢出情况
 - **剩余风险**：已有数据库的 `metrics_catalog` 会残留两行血压记录（不影响使用；全新 init 不会出现）
 - **状态**：T06 仍待审核（报告已附修订记录）
+
+---
+
+### 2026-10-21 — 延伸 — 界面内配置 AI 接口（DeepSeek 及其它 OpenAI 兼容服务）
+
+- **触发**：用户"在操作界面增设 API 接口适配 DeepSeek 等接入"。
+- **新增文件**：
+  - `src/health_agent/ai_client/probe.py`：试连探针（一句提示 / 16 tokens / 0 重试；
+    4xx 翻成人话；永不抛异常，也不回显密钥与响应体）
+  - `tests/test_ai_config.py`：29 条回归（预设解析、`.env` 往返、留空 vs 清空语义、
+    密钥不上页面、GET 零网络、试连成败、CSRF/鉴权、`Settings` repr 不含密钥）
+- **修改文件**：
+  - `config.py`：`AI_PRESETS`（DeepSeek / 通义千问 / Kimi / 智谱 / OpenAI / Ollama 六家预设）、
+    `preset_by_key()`、`active_preset_key()`、`_first()`（`AI_*` 优先、`DEEPSEEK_*` 兼容）、
+    Settings 字段 `deepseek_*` → `ai_*`、新增 `env_path` / `ai_key_tail`、
+    `save_ai_config()`（原子写回 `.env`，保留其它行，`None`=不改 / `""`=删除，0600）、
+    `ai_env_override_keys()`（只回键名不回值）
+  - `ai_client/summarizer.py`、`cli.py`：跟随字段改名
+  - `ui/app.py`：`GET /settings` 增加 AI 上下文；新增 `POST /settings/ai`
+    （`action=save` 写回并立即重新装载；`action=test` 只试不存）
+  - `ui/templates/settings.html`：新增「AI 分析接口」卡片（预设下拉、地址、模型、
+    password 型密钥输入、清除勾选、保存 / 测试连接两个按钮、服务商参考地址折叠区）
+  - `ui/static/css/components.css`：`.form-actions` 与设置页 `details` 排版
+  - `.env.example`、`README.md`、`docs/02-runbook.md`（新增 §7.5）、`docs/06-ui-extension-guide.md`
+    （新增 §7.5 可写配置判据）、`docs/07-workbench-checklist.md`、`docs/08-workbench-overview.md`
+  - `pyproject.toml` / `__init__.py`：0.1.3 → **0.2.0**
+- **关键取舍**：
+  - 零 JS 下选预设没法自动填表，因此约定"地址与模型**留空即取预设值**"，填了以填的为准；
+  - 保存后立即生效（路由闭包读同一个 `settings` 名字，`app.state.settings` 同步更新），
+    不用重启；
+  - 进程环境变量仍优先于 `.env`，被压住时页面明说是哪几个变量——不然用户会以为修改丢了；
+  - 密钥语义三分：填新值=覆盖、勾"清除"=删除、都空=不动。**绝不把"没填"当"清空"**。
+- **执行命令**：
+  - `.venv/Scripts/python.exe -m pytest -q` → **491 passed, 1 skipped, 0 failed**（共 492 条）（跳过项为 Windows 不适用的 chmod 断言）
+- **未验证**：真实密钥的端到端连通（无可用密钥）；Ollama 本地实例；各厂商非 OpenAI 兼容的私有协议
+- **剩余风险**：`ai_base_url` 未强制 https（保留 `http://127.0.0.1` 本地代理的合法用法，沿用 T02 裁决）
+- **状态**：待审核

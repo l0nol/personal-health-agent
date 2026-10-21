@@ -20,6 +20,26 @@
 | 任务 5 规则提醒 | ✅ 完成（中位数+MAD 基线 / 4 条规则 / 去重冷却 / 已读反馈） |
 | 任务 6 DeepSeek 接入与费用监控 | ✅ 完成（独立模块 / 缓存 / 调用日志 / 失败降级） |
 | 任务 7 回归、打包与平板评估 | ✅ 完成（备份恢复实测 / runbook / 平板评估分列） |
+| T07 现状核验 | 已批准（`reports/T07_GAP_ANALYSIS.md`） |
+| T08 训练日志与恢复上下文 | 已批准（`reports/T08_TRAINING_DATA_REPORT.md`） |
+| T09 每日建议引擎 | 已批准（`reports/T09_DAILY_GUIDANCE_REPORT.md`） |
+| T10 Simple 训练 UI | 待审核（`reports/T10_SIMPLE_TRAINING_UI_REPORT.md`） |
+| T11 Chronos 整合 | 待审核（`reports/T11_CHRONOS_TRAINING_UI_REPORT.md`） |
+
+### 0.1.3 新增（T08–T11）
+
+| 项 | 内容 |
+|---|---|
+| 训练日志 | `training_sessions`：日期、类型、部位、内容、时长、主观强度、完成度；时长与强度可空 |
+| 恢复反馈 | `recovery_feedback`：精力、疲劳、酸痛部位/程度、是否不适；一天一条，DB 约束 `source=subjective` |
+| 训练偏好 | `training_preferences`：器材、每周训练日、时间预算、避练动作 |
+| 每日建议 | `guidance/`：休息 / 轻松活动 / 常规训练 / 资料不足，四类输出均带依据、窗口、覆盖度、不确定性、规则版本 |
+| 可选 AI | `advice --explain`：先打印将发送的摘要，`--confirm-send` 才调用；失败退回本地解释 |
+| 迁移 | `002_training.sql`，schema v1 → v2，幂等、旧库可升级、旧备份恢复时自动升级 |
+| 界面 | 首页今日建议卡 + 快速训练；`/training` 训练/反馈/偏好三表单（T10）；`/chronos` 六刻度拨盘 + 中心助手 + 拖拽渐进增强（T11） |
+| 测试 | 382 → **463 passed**（新增 81 条） |
+
+> T10 已交付界面，等你按 `docs/10-tablet-manual-check.md` 在平板上验证；T11 的拨盘设计见 `docs/11-chronos-dial-concept.md`。
 
 ### 0.1.2 变更（UI 设计落地 + 时钟模式 Demo）
 
@@ -86,19 +106,29 @@ python -m venv .venv
 .venv/Scripts/python.exe -m health_agent.cli import test_data/sample_daily_metrics.json --commit  # 写库
 .venv/Scripts/python.exe -m health_agent.cli stats
 .venv/Scripts/python.exe -m health_agent.cli conflicts
+
+# 训练日志与每日建议（T08 / T09）
+.venv/Scripts/python.exe -m health_agent.cli training add --type strength --parts "胸,肩" --duration 45
+.venv/Scripts/python.exe -m health_agent.cli training list --days 14
+.venv/Scripts/python.exe -m health_agent.cli feedback --energy 3 --fatigue 3 --soreness-parts 胸 --soreness-level 2
+.venv/Scripts/python.exe -m health_agent.cli prefs --days 3 --time-budget 45 --equipment "哑铃,弹力带"
+.venv/Scripts/python.exe -m health_agent.cli advice                 # 本地规则
+.venv/Scripts/python.exe -m health_agent.cli advice --json          # 含依据与不确定性
+.venv/Scripts/python.exe -m health_agent.cli advice --explain       # 只打印将发送的摘要，不发送
 ```
 
 ### 界面里有什么
 
 | 页面 | 能做什么 |
 |---|---|
-| `/` | 记录总数、待确认数、待裁决冲突、带标记记录数，最近记录与导入 |
+| `/` | 今日建议卡（依据/为什么/边界）、指标卡、睡眠图、快速训练记录、待处理、最近记录 |
 | `/records` | 按指标/状态筛选；确认、驳回、改值、删除 |
+| `/training` | 记训练、记当天状态（精力/疲劳/酸痛）、训练偏好、删除；与首页同一张建议卡 |
 | `/imports` | 上传 JSON/CSV/TSV → 预览 → 写入；批次确认全部 / 撤销 |
 | `/conflicts` | 新旧值对照，选择「保留已有」或「采用新值」 |
 | `/sleep` | 睡眠时长柱状图 + 目标线（标注来源）+ 阶段结构 + 明细；数据不足不给趋势 |
 | `/trends` | 多指标折线/柱状/区间带；缺失断线；区间端点不显示均值 |
-| `/chronos` | 时钟模式 Demo：外环导航 + 中心摘要 + 普通入口 |
+| `/chronos` | 时钟模式：六刻度拨盘（睡眠/趋势/训练/提醒/报告/设置）+ 中心助手抽屉 + 拖拽增强；预览与简洁模式同源 |
 | `/reports` | 每日简报 / 每周报告；每个数字可展开看来源记录；数据质量与覆盖率 |
 | `/alerts` | 提醒列表；立即评估；标记已读；三条反馈（有帮助/已照做/不相关） |
 | `/settings` | 生活背景（全部可跳过）；运行信息；导出入口 |
@@ -110,13 +140,15 @@ python -m venv .venv
 .venv/Scripts/python.exe -m health_agent.cli passwd   # 生成 HEALTH_AGENT_PASSWORD_HASH
 ```
 
-预期：`295 passed`。测试覆盖：指标注册表不变式、单位白名单与换算、单行校验的全部
+预期：`463 passed`。测试覆盖：指标注册表不变式、单位白名单与换算、单行校验的全部
 拒绝与标记路径、迁移幂等、部分唯一索引拦截静默覆盖、配置约束、文档一致性、
 JSON/CSV 读取（含 BOM 与 GBK）、五桶分桶、批次计数、冲突登记、CLI 干跑不写库、状态迁移、鉴权与 CSRF、导出、设置读写、窗口聚合（确认制/缺失率/样本不足）、
 报告数字追溯、周报 4/7 覆盖率门槛、基线（MAD/IQR 兜底）、
 4 条规则的触发/不触发/边界/去重/冷却/反馈、
 AI 降级与缓存、HTTP 重试策略、提示词输出校验、
-备份完整性校验与恢复（含篡改拒绝）。
+备份完整性校验与恢复（含篡改拒绝）、
+训练日志迁移（新库/旧库/重复迁移/旧备份升级）、校验与导出、
+建议引擎的 9 类场景、契约不变式、禁用词守卫、AI 超时与非法输出降级。
 
 ### 导入的五个结局
 
@@ -146,18 +178,39 @@ cp .env.example .env
 |---|---|---|
 | `HEALTH_AGENT_DB_PATH` | `data/health.db` | 本地库路径 |
 | `HEALTH_AGENT_LAN` | `0` | 置 1 允许局域网访问；**必须同时设置密码 hash，否则拒绝启动** |
-| `DEEPSEEK_API_KEY` | 空 | 为空时 AI 全部走本地模板降级，不影响记录与统计 |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | 模型可切换，不硬编码 |
+| `AI_API_KEY` | 空 | 为空时 AI 全部走本地模板降级，不影响记录与统计 |
+| `AI_BASE_URL` | `https://api.deepseek.com/v1` | 任何 OpenAI 兼容端点都能接 |
+| `AI_MODEL` | `deepseek-chat` | 模型可切换，不硬编码 |
 | `HEALTH_AGENT_SLEEP_TARGET_MIN` | `420` | 睡眠目标（分钟），用于趋势提醒 |
 | `HEALTH_AGENT_BASELINE_MAD_FACTOR` | `2.5` | 基线偏离阈值倍数 |
 | `HEALTH_AGENT_RULE_COOLDOWN_HOURS` | `72` | 同类提醒冷却小时数 |
 | `HEALTH_AGENT_SLEEP_DEFICIT_DAYS` | `3` | 近 7 天几天睡眠不足才提醒 |
 | `HEALTH_AGENT_RESTING_HR_SHIFT_BPM` | `8` | 静息心率偏离基线多少才提醒 |
 | `HEALTH_AGENT_DATA_GAP_RATE` | `0.5` | 缺失率超过多少提示补录 |
-| `DEEPSEEK_TIMEOUT_SECONDS` | `20` | AI 请求超时（秒） |
-| `DEEPSEEK_MAX_RETRIES` | `2` | AI 请求重试次数（4xx 不重试） |
-| `DEEPSEEK_TIMEOUT_SECONDS` | `20` | AI 请求超时（秒） |
-| `DEEPSEEK_MAX_RETRIES` | `2` | AI 请求重试次数（4xx 不重试） |
+| `AI_TIMEOUT_SECONDS` | `20` | AI 请求超时（秒） |
+| `AI_MAX_RETRIES` | `2` | AI 请求重试次数（4xx 不重试） |
+
+AI 这三项也可以直接在界面「设置 → AI 分析接口」里填：保存后写回 `.env` 并立即生效
+（不用重启），页面上只显示密钥尾号。老名字 `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` /
+`DEEPSEEK_MODEL` / `DEEPSEEK_TIMEOUT_SECONDS` / `DEEPSEEK_MAX_RETRIES` 仍然有效，
+两套都填时以 `AI_*` 为准。"
+
+### 接别家模型（DeepSeek 之外的 OpenAI 兼容接口）
+
+只要服务商提供 `POST {base_url}/chat/completions` 形状的接口就能用，不是白名单：
+
+| 服务商 | `AI_BASE_URL` | `AI_MODEL` 示例 |
+|---|---|---|
+| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` / `deepseek-reasoner` |
+| 通义千问（百炼兼容模式） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` |
+| Moonshot / Kimi | `https://api.moonshot.cn/v1` | `moonshot-v1-8k` |
+| 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash` |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
+| 本地 Ollama | `http://127.0.0.1:11434/v1` | `qwen2.5:7b` |
+
+界面里选"服务商"只是帮你把这两项填好；填完点「测试连接」可以只发一句话验一次
+（不保存、不写记录、不产生分析）。注意：进程环境变量的优先级高于 `.env`，
+如果启动前 `export` 过同名变量，界面保存的值会被它压住，页面会明确提示。
 
 ## 目录
 
@@ -235,7 +288,7 @@ src/health_agent/
 - 会话密钥存在 `data/.session_secret`，删除它会让所有已登录会话失效。
 - **逻辑键只到「日期」粒度**：同来源同日第二条瞬时测量（如早晚各一次体温）会被判为冲突，
   而不是当成两次测量。启用 P2 指标（体温/体重/血糖）前必须把观测时刻纳入逻辑键。
-- 简报可用 AI 改写（需 `DEEPSEEK_API_KEY`）；未配置时用本地模板文案，功能不缺失。
+- 简报可用 AI 改写（需配置密钥，界面或 `.env` 均可）；未配置时用本地模板文案，功能不缺失。
 - 提醒只做站内列表，没有桌面通知或手机推送；需要主动查看 `/alerts`。
 - 「不相关」反馈目前只记录，尚未据此自动降频（方案里有这个设计，未实现）。
 - AI 费用无法从当前接口拿到账单数据，日志中 `cost_source` 固定为 `unavailable`；
@@ -254,6 +307,9 @@ src/health_agent/
 - `docs/06-ui-extension-guide.md` — **UI 扩展与美化指南**（换肤 / 加页面 / 加组件）
 - `docs/07-workbench-checklist.md` — 工作台搭建前置条件与验收清单
 - `docs/08-workbench-overview.md` — **工作台总览**（模块 / 布局 / 数据来源 / 交互 / 配置）
+- `docs/09-training-and-guidance.md` — **训练日志与每日建议使用说明**（命令 / JSON 契约 / 边界）
+- `docs/10-tablet-manual-check.md` — **平板端手动验证清单**（局域网、密码、22 项验收）
+- `docs/11-chronos-dial-concept.md` — **Chronos 拨盘设计**（Lumen V4 取舍表；生产实现见 T11 报告）
 
 ## 备份与恢复
 

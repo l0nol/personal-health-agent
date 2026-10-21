@@ -31,3 +31,8 @@ dist/
 .vscode/
 .idea/
 .DS_Store
+
+# pytest 临时产物（沙箱里 --basetemp 留下的目录，别提交）
+_pt_*/
+.pytest_tmp/
+_pytest.log

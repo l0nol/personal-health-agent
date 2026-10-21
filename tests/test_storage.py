@@ -7,7 +7,7 @@ import sqlite3
 import pytest
 
 from health_agent.catalog import METRICS
-from health_agent.storage.db import current_version, index_names, init_db, table_names
+from health_agent.storage.db import current_version, index_names, init_db, migration_files, table_names
 from health_agent.storage.keys import dedup_key, logical_key
 from health_agent.storage.repository import (
     count_audit,
@@ -44,7 +44,8 @@ def test_migrations_are_idempotent(db_file):
     second = current_version(conn)
     conn.close()
 
-    assert first == second == 1
+    # 与迁移文件数量对齐，而不是写死版本号：新增迁移时这条断言仍然有效
+    assert first == second == migration_files()[-1][0]
 
 
 def test_all_tables_created(conn):

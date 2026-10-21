@@ -226,6 +226,14 @@ details summary { cursor: pointer; color: var(--primary); }
 .mode-option { background: var(--surface); color: var(--text-2); border-color: var(--line-strong); }
 .mode-option.selected { background: var(--primary-soft); color: var(--primary-strong); border-color: var(--primary); }
 
+/* 一组并列的提交按钮（如"保存"+"测试连接"）。窄屏自动换行，不挤成一条。 */
+.form-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; }
+
+/* 设置页里给配置项补一句"这是什么"的说明，跟在表单后面 */
+.card > details { margin: 4px 0 12px; }
+.card > details ul { margin: 6px 0 0; padding-left: 18px; }
+.card > details li { margin-bottom: 4px; }
+
 .link-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .link-grid a { padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-control); text-align: center; }
 .link-grid a:hover { background: var(--surface-2); text-decoration: none; }
@@ -250,4 +258,75 @@ details summary { cursor: pointer; color: var(--primary); }
   table.table tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
   table.table td { border: none; padding: 2px 0; }
   .commit-bar { flex-direction: column; align-items: stretch; }
+}
+
+/* ---------------- 今日建议卡与训练表单（T10） ----------------
+   颜色语义：休息=警告色、轻松活动=辅助色、常规训练=主色、资料不足=中性。
+   颜色不是健康评分，只是让"今天该做什么"一眼可见。 */
+.guidance-card { border-left: 4px solid var(--primary); }
+.guidance-card.cat-rest { border-left-color: var(--warn); }
+.guidance-card.cat-light_activity { border-left-color: var(--accent); }
+.guidance-card.cat-regular_training { border-left-color: var(--primary); }
+.guidance-card.cat-insufficient_data { border-left-color: var(--line-strong); }
+
+.guidance-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.guidance-head h2 { margin: 0 0 6px; font-size: 20px; line-height: 1.35; }
+.guidance-focus { margin: 0; color: var(--text); }
+
+.eyebrow { margin: 0 0 4px; font-size: 12px; color: var(--text-3); letter-spacing: .02em; }
+
+.guidance-badge {
+  flex: none; padding: 4px 10px; border-radius: 999px;
+  background: var(--primary-soft); color: var(--primary);
+  font-size: 12px; white-space: nowrap;
+}
+.cat-rest .guidance-badge { background: var(--warn-soft); color: var(--warn); }
+.cat-light_activity .guidance-badge { background: var(--accent-soft); color: var(--accent-strong); }
+.cat-insufficient_data .guidance-badge { background: var(--surface-2); color: var(--text-2); }
+
+.guidance-facts { list-style: none; margin: 14px 0 0; padding: 0; }
+.guidance-facts li {
+  display: grid; grid-template-columns: minmax(96px, 150px) minmax(0, 1fr) auto;
+  gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px;
+}
+.fact-label { color: var(--text-2); }
+.fact-value { color: var(--text); overflow-wrap: anywhere; }
+.fact-coverage { color: var(--text-3); font-size: 12px; white-space: nowrap; }
+
+.why { margin-top: 10px; }
+.why summary {
+  display: flex; align-items: center; min-height: 44px;
+  color: var(--text-2); font-size: 13px; cursor: pointer; list-style: none;
+}
+.why summary::-webkit-details-marker { display: none; }
+.why summary::before { content: "＋ "; color: var(--text-3); }
+.why[open] summary::before { content: "－ "; }
+.why p { margin: 6px 0; }
+.why ul { margin: 4px 0 10px 18px; padding: 0; color: var(--text-2); font-size: 13px; }
+.why-sub { margin: 10px 0 2px !important; font-size: 12px; color: var(--text-3); }
+
+.guidance-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.safety {
+  margin: 12px 0 0; padding-top: 8px; border-top: 1px dashed var(--line);
+  font-size: 12px; color: var(--text-2);
+}
+
+.section-label { margin: 20px 0 8px; font-size: 12px; color: var(--text-3); letter-spacing: .04em; }
+
+.form-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 14px; align-items: end;
+}
+.form-grid label { margin-bottom: 0; }
+.form-grid .span-2 { grid-column: 1 / -1; }
+.form-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.check-line { display: flex !important; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; }
+.check-line input { width: auto !important; min-height: auto !important; margin: 0; }
+.inline-form { display: inline; }
+
+@media (max-width: 767px) {
+  .guidance-head { flex-direction: column; }
+  .guidance-head h2 { font-size: 18px; word-break: keep-all; overflow-wrap: anywhere; }
+  .guidance-facts li { grid-template-columns: 1fr; gap: 2px; }
+  .fact-coverage { white-space: normal; }
 }

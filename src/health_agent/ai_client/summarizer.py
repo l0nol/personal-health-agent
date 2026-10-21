@@ -110,7 +110,7 @@ def _log_call(
 def _keys(payload: ReportPayload, settings) -> tuple[str, str, str]:
     summary = build_summary(payload)
     digest = summary_digest(summary)
-    model = settings.deepseek_model
+    model = settings.ai_model
     return digest, model, make_cache_key(digest=digest, prompt_version=PROMPT_VERSION, model=model)
 
 
@@ -146,11 +146,11 @@ def rewrite_report(
             # 没有密钥：直接给本地文案，不产生任何调用与费用
             return Narrative(text=payload.text, source=SOURCE_TEMPLATE)
         client = ChatCompletionClient(
-            api_key=settings.deepseek_api_key or "",
-            base_url=settings.deepseek_base_url,
+            api_key=settings.ai_api_key or "",
+            base_url=settings.ai_base_url,
             model=model,
-            timeout=settings.deepseek_timeout_seconds,
-            max_retries=settings.deepseek_max_retries,
+            timeout=settings.ai_timeout_seconds,
+            max_retries=settings.ai_max_retries,
         )
 
     try:

@@ -57,7 +57,8 @@ def test_manifest_reports_real_counts(tmp_path):
     assert manifest["counts"]["pending"] == 1
     assert manifest["counts"]["confirmed"] == 1
     assert manifest["total_records"] == 2
-    assert manifest["schema_version"] == 1
+    # 002 训练日志迁移把 schema 版本推进到 2；这条断言随迁移同步，不是放宽
+    assert manifest["schema_version"] == 2
     assert manifest["verified"] is True
 
 

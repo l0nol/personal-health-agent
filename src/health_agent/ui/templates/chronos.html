@@ -1,10 +1,24 @@
 {% extends "base.html" %}
+{% set SIN6 = [0, 0.866, 0.866, 0, -0.866, -0.866] %}
+{% set COS6 = [1, 0.5, -0.5, -1, -0.5, 0.5] %}
+{% set SIN12 = [0, 0.5, 0.866, 1, 0.866, 0.5, 0, -0.5, -0.866, -1, -0.866, -0.5] %}
+{% set COS12 = [1, 0.866, 0.5, 0, -0.5, -0.866, -1, -0.866, -0.5, 0, 0.5, 0.866] %}
+{% set SINM = [0.259, 0.707, 0.966, 0.966, 0.707, 0.259, -0.259, -0.707, -0.966, -0.966, -0.707, -0.259] %}
+{% set COSM = [0.966, 0.707, 0.259, -0.259, -0.707, -0.966, -0.966, -0.707, -0.259, 0.259, 0.707, 0.966] %}
+{% set ICONS = {
+  'sleep': 'M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z',
+  'trends': 'M3 17l5-6 4 3 5-8 4 5',
+  'training': 'M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10',
+  'alerts': 'M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6ZM10 20a2 2 0 0 0 4 0',
+  'reports': 'M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h6',
+  'settings': 'M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM19 12a7 7 0 0 0-.14-1.4l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2.4-1.4L14 3h-4l-.16 2.3a7 7 0 0 0-2.4 1.4l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12Z'
+} %}
 {% block title %}时钟模式{% endblock %}
 {% block content %}
 <header class="page-head">
   <div>
     <h1>时钟模式</h1>
-    <p class="sub">外环选页面 · 中心看预览 · 点「进入」打开</p>
+    <p class="sub">中心助手 · 外环选刻度 · 点「进入」才打开页面</p>
   </div>
   <form method="post" action="/settings/mode">
     <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -14,45 +28,83 @@
   </form>
 </header>
 
-<div class="chronos">
+<div class="chronos-app">
+  {# 单选控件驱动整个表盘：无脚本也能用（点击标签 / Tab + 方向键）；拖拽只是可选增强 #}
+  {% for s in sectors %}
+  <input class="sector-input" type="radio" name="sector" id="sector-{{ s.key }}"
+         value="{{ s.key }}" data-angle="{{ s.idx * 60 }}"
+         {% if selected == s.key %}checked{% endif %}>
+  {% endfor %}
+  <input class="sector-input" type="radio" name="sector" id="sector-idle" value="idle"
+         {% if not selected %}checked{% endif %}>
+  <input class="sector-input" type="radio" name="sector" id="sector-assistant" value="assistant">
+
   <section aria-label="表盘导航">
-    <div class="dial" role="group" aria-label="表盘导航：先选一个扇区，点「进入」打开">
+    <div class="dial" role="group" aria-label="表盘导航：选一个刻度看预览，点「进入」打开">
       <div class="dial-face" aria-hidden="true"></div>
 
-      {# 单选扇区：原生 radio + label，零 JS。方向键切换，Tab 到「进入」按回车 #}
-      {% for s in sectors %}
-      <input class="sector-input" type="radio" name="sector" id="sector-{{ s.key }}"
-             value="{{ s.key }}" style="--i:{{ s.idx }}" {% if loop.first %}checked{% endif %}>
-      {% endfor %}
-
-      <div class="dial-ring">
-        {% for s in sectors %}
-        <label class="sector" for="sector-{{ s.key }}" style="--i:{{ s.idx }}"><span>{{ s.label }}</span></label>
+      <div class="dial-ticks" aria-hidden="true">
+        {% for i in range(12) %}
+        <i class="tick" style="left:{{ 50 + SIN12[i] * 45 }}%;top:{{ 50 - COS12[i] * 45 }}%;--a:{{ i * 30 }}deg"></i>
+        {% endfor %}
+        {% for i in range(12) %}
+        <i class="tick minor" style="left:{{ 50 + SINM[i] * 39 }}%;top:{{ 50 - COSM[i] * 39 }}%;--a:{{ 15 + i * 30 }}deg"></i>
         {% endfor %}
       </div>
 
+      <div class="dial-arc" aria-hidden="true">
+        <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" pathLength="100"/></svg>
+      </div>
+      <div class="dial-needle" aria-hidden="true"></div>
+      <div class="dial-cap" aria-hidden="true"></div>
+
+      {% for s in sectors %}
+      <label class="dial-fbtn" for="sector-{{ s.key }}" style="--c:{{ s.accent }};left:{{ 50 + SIN6[s.idx] * 37 }}%;top:{{ 50 - COS6[s.idx] * 37 }}%">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{ ICONS.get(s.key, '') }}"/></svg>
+        <span>{{ s.label }}</span>
+      </label>
+      {% endfor %}
+
+      <label class="dial-mic" for="sector-assistant" title="唤醒助手">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </label>
+
       <div class="dial-core">
-        <p class="core-date">数据截至 {{ end_day }}</p>
+        <label class="dial-orb" for="sector-assistant" aria-label="唤醒助手">
+          <span class="orb-rings"><i></i><i></i><i></i></span>
+          <span class="orb-ball">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 4c4 0 7 2.8 7 6.4 0 3.5-3.1 6.3-7 6.3-.9 0-1.7-.1-2.5-.4L5.6 18l.7-3C4.8 13.7 5 12.2 5 10.4 5 6.8 8 4 12 4Z" fill="currentColor"/></svg>
+          </span>
+          <span class="orb-hint">点我唤醒助手</span>
+        </label>
 
         {% for s in sectors %}
-        <div class="core-panel" data-sector="{{ s.key }}">
-          <p class="core-kicker">{{ s.kicker }}</p>
+        <div class="core-card" data-sector="{{ s.key }}">
+          <p class="core-kicker" style="color:{{ s.accent }}">{{ s.kicker }}</p>
           <p class="core-value">{{ s.value_text }}</p>
           <p class="core-sub">{{ s.sub }}</p>
+          <ul class="core-facts">
+            {% for label, value in s.facts %}
+            <li><span>{{ label }}</span><b>{{ value }}</b></li>
+            {% endfor %}
+          </ul>
+          <a class="core-enter" href="{{ s.href }}">进入{{ s.label }} →</a>
         </div>
         {% endfor %}
 
-        {% for s in sectors %}
-        <a class="core-enter" data-sector="{{ s.key }}" href="{{ s.href }}">进入{{ s.label }} →</a>
-        {% endfor %}
-
-        <p class="core-note">待确认 {{ counts.pending }} · 冲突 {{ conflicts }} · 未读 {{ unread_alerts }}</p>
+        <p class="core-note">数据截至 {{ end_day }} · 待确认 {{ counts.pending }} · 未读 {{ unread_alerts }}</p>
       </div>
     </div>
 
+    <p class="dial-status" aria-live="polite">
+      <span class="pill"></span>
+      <span class="s s-idle">闲置态：点中心唤醒助手，或点任意刻度看预览</span>
+      <span class="s s-preview">预览态：中心是该功能的摘要；点「进入」才打开页面</span>
+      <span class="s s-asst">助手态：只解释已有结论；预填也需你确认后才保存</span>
+    </p>
     <p class="dial-hint">
-      点扇区只做预览，点「进入」才打开页面；键盘：Tab 到表盘后用方向键选，再 Tab 到「进入」按回车。
-      系统开启“减少动态效果”时，表盘不旋转、直接切换。
+      键盘：Tab 到表盘后用方向键选刻度，再 Tab 到「进入」按回车；系统开启“减少动态效果”时不做过渡动画。
+      拖拽旋转是可选增强——没有它，点击与键盘同样可用。
     </p>
   </section>
 
@@ -60,23 +112,103 @@
     {% for tile in tiles %}
     <a class="tile" href="{{ tile.href }}">
       <span class="tile-label">{{ tile.label }}</span>
-      <span class="tile-value">{{ tile.value|human(tile.unit, tile.metric) }}</span>
+      <span class="tile-value">{% if tile.value is none %}<span class="muted">—</span>{% else %}{{ tile.value|human(tile.unit, tile.metric) }}{% endif %}</span>
       <span class="tile-foot">{% if tile.days %}近 7 天有效 {{ tile.days }}/7 天{% else %}近 7 天无数据{% endif %}</span>
     </a>
     {% endfor %}
   </div>
-</div>
 
-<section class="card">
-  <h2>普通入口</h2>
-  <p class="note">表盘只是另一种排版；不使用表盘也能到达所有页面（键盘 Tab 同样可用）。</p>
-  <div class="link-grid">
-    {% for page in link_pages %}<a href="{{ page.href }}">{{ page.label }}</a>{% endfor %}
+  <section class="card">
+    <h2>普通入口</h2>
+    <p class="note">表盘只是另一种排版；不使用表盘也能到达所有页面（键盘 Tab 同样可用）。</p>
+    <div class="link-grid">
+      {% for page in link_pages %}<a href="{{ page.href }}">{{ page.label }}</a>{% endfor %}
+    </div>
+  </section>
+
+  <div class="dial-backdrop"><label for="sector-idle" aria-label="关闭助手"></label></div>
+  <div class="dial-sheet" role="dialog" aria-label="助手">
+    <div class="sheet-head">
+      <span class="sheet-orb">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 4c4 0 7 2.8 7 6.4 0 3.5-3.1 6.3-7 6.3-.9 0-1.7-.1-2.5-.4L5.6 18l.7-3C4.8 13.7 5 12.2 5 10.4 5 6.8 8 4 12 4Z" fill="currentColor"/></svg>
+      </span>
+      <b>助手</b>
+      <label class="sheet-close" for="sector-idle" title="关闭">×</label>
+    </div>
+    <p class="sheet-note">只解释已经算好的结论；不诊断，不写库。预填的训练表单需要你确认后才会保存。</p>
+    <div class="sheet-actions">
+      {% for item in shortcuts %}
+      <a class="chip" href="{{ item.href }}">{{ item.label }}</a>
+      {% endfor %}
+    </div>
+    <p class="sheet-foot">真实问答（T12）未接入；当前所有内容都来自本地规则与已有数字。</p>
   </div>
-</section>
+</div>
 
 <p class="legend">
   表盘中心与简洁模式用同一份数据、同一套格式化，不做第二套口径；缺失显示“—”，不显示 0。
-  本模式不新增任何写操作。拖动自由旋转未实现（本项目零 JS），旋转仅为选中扇区时的定位动画，可被系统“减少动态效果”关闭。
+  刻度颜色只表示“当前选中的功能”，不代表健康状况，也不给任何评分。
 </p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* 可选增强：拖拽拨盘换刻度。
+   1) 只改预览，不导航 —— 导航仍然要显式点「进入」；
+   2) 无脚本时点击与键盘完全可用，这里只是增强；
+   3) 只有脚本加载后才给 .dial 加 touch-action:none，避免触屏用户滚不动页面；
+   4) 尊重 prefers-reduced-motion：不做惯性，只做即时吸附。 */
+(function () {
+  var dial = document.querySelector('.dial');
+  if (!dial || !window.PointerEvent) return;
+  var inputs = Array.prototype.slice.call(document.querySelectorAll('input.sector-input[data-angle]'));
+  if (!inputs.length) return;
+
+  dial.classList.add('has-drag');
+  var dragging = false, rect = null;
+
+  function angleAt(x, y) {
+    rect = dial.getBoundingClientRect();
+    var cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    var deg = Math.atan2(x - cx, -(y - cy)) * 180 / Math.PI;
+    return deg < 0 ? deg + 360 : deg;
+  }
+
+  function nearest(deg) {
+    var best = null, bestDiff = 999;
+    inputs.forEach(function (input) {
+      var a = parseFloat(input.getAttribute('data-angle')) || 0;
+      var diff = Math.abs(((a - deg) % 360 + 540) % 360 - 180);
+      if (diff < bestDiff) { bestDiff = diff; best = input; }
+    });
+    return best;
+  }
+
+  dial.addEventListener('pointerdown', function (e) {
+    /* 标签、中心卡、助手按钮上的操作优先，不进入拖拽 */
+    if (e.target.closest('.dial-fbtn') || e.target.closest('.dial-core') || e.target.closest('.dial-mic')) return;
+    dragging = true;
+    rect = null;
+  });
+
+  dial.addEventListener('pointermove', function (e) {
+    if (!dragging) return;
+    var deg = angleAt(e.clientX, e.clientY);
+    dial.style.setProperty('--drag-deg', deg + 'deg');
+    dial.classList.add('is-dragging');
+    var input = nearest(deg);
+    if (input && !input.checked) { input.checked = true; }
+  });
+
+  function stop() {
+    if (!dragging) return;
+    dragging = false;
+    dial.classList.remove('is-dragging');
+  }
+
+  dial.addEventListener('pointerup', stop);
+  dial.addEventListener('pointercancel', stop);
+  dial.addEventListener('pointerleave', stop);
+})();
+</script>
 {% endblock %}

@@ -1,133 +1,314 @@
 /* ============================================================
-   pages.css — 页面层：只放某一张页面自己的样式（当前：时钟模式表盘）。
+   pages.css — 页面层：只放某一张页面自己的样式（当前：时钟模式拨盘）。
    新页面如果只是复用现有组件，不需要在这里加任何东西。
    ============================================================ */
 
-/* ---------------- 时钟模式（T05）：零 JS 单选表盘 ----------------
-   交互：radio + label，点扇区只预览，点「进入」才跳转。
-   方向键切换选中；表盘按选中扇区旋转到 12 点方向，标签反向转回保持正立。
-   prefers-reduced-motion: no-preference 才启用过渡，减少动态时直接切换。 */
-.chronos { display: grid; grid-template-columns: minmax(0, 440px) minmax(0, 1fr); gap: 24px; align-items: start; }
-.dial { position: relative; width: 100%; aspect-ratio: 1; --dial-r: clamp(104px, 28vw, 148px);
-  /* 环形导航整块旋转时方框的角会扫出容器（120° 时包围盒约 1.37 倍），
-     裁掉才不会把页面撑出横向滚动；扇区半径 ≤148+34px，仍在裁切范围内 */
-  overflow: hidden; }
+/* ---------------- 时钟模式（T11）：中心助手 + 外环拨盘 ----------------
+   结构：radio 控件（每个刻度 + 闲置 + 助手） → 表盘 → 状态行 → 助手抽屉。
+   交互：点标签 / Tab+方向键 即可切换（零 JS 可用）；拖拽脚本只做增强。
+   缩放：整盘 min(86vw,470px)，刻度/标签/中心按容器百分比定位，
+         卡内字号用 clamp() 跟随视口 —— 小屏是"整盘缩小"，不是砍内容。
+   颜色：刻度配色只表示"当前选中的功能"，不是健康评分。 */
 
-/* 老内核（Chromium < 88，部分定制浏览器）不支持 aspect-ratio：用 padding 撑出正方形，
-   否则表盘高度为 0（子元素全是绝对定位） */
+.chronos-app { display: flex; flex-direction: column; align-items: center; }
+.chronos-app > section { width: 100%; max-width: 470px; }
+
+/* 隐藏的原生 radio：键盘可聚焦，指针交给 label */
+.sector-input {
+  position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;
+}
+
+.dial {
+  position: relative; width: min(86vw, 470px); aspect-ratio: 1; margin: 0 auto;
+  border-radius: 50%; overflow: hidden; touch-action: manipulation;
+  background: radial-gradient(circle at 50% 36%, var(--surface) 0%, var(--surface-2) 72%, var(--line) 100%);
+  box-shadow: inset 0 0 0 1px var(--line-strong), var(--shadow-1);
+}
 @supports not (aspect-ratio: 1) {
   .dial::before { content: ""; display: block; padding-bottom: 100%; }
 }
-.dial-face {
-  position: absolute; inset: 6%;
-  border-radius: 50%; background: var(--surface);
-  border: 1px solid var(--line); box-shadow: var(--shadow-1);
-}
-.dial-face::after {
-  content: ""; position: absolute; inset: 16%;
-  border-radius: 50%; border: 1px dashed var(--line);
-}
+/* 只有脚本加载后才禁止触屏滚动手势，避免无脚本用户在表盘上滚不动页面 */
+.dial.has-drag { touch-action: none; }
+.dial-face { position: absolute; inset: 4%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 50% 30%, var(--surface) 0%, var(--surface-2) 100%);
+  box-shadow: inset 0 0 0 1px var(--line); }
 
-/* 隐藏的原生 radio：与对应扇区同位置，供键盘聚焦与选中态；
-   不接收指针（点击全部交给 label），焦点环画在会随环旋转的 label 上，
-   否则旋转后焦点环会出现在别的扇区位置 */
-.sector-input {
-  position: absolute; left: 50%; top: 50%; width: 68px; height: 68px; margin: -34px;
-  appearance: none; -webkit-appearance: none; opacity: 0;
-  background: transparent; border: 0; border-radius: 50%; padding: 0;
-  pointer-events: none;
-  transform: rotate(calc(var(--i) * 60deg)) translateY(calc(-1 * var(--dial-r))) rotate(calc(var(--i) * -60deg));
+/* 刻度：12 主刻度 + 12 细分；选中后细分淡出，让位给中心 */
+.dial-ticks { position: absolute; inset: 0; pointer-events: none; }
+.dial-ticks .tick {
+  position: absolute; width: 2px; height: 5.5%; border-radius: 2px;
+  transform: translate(-50%, -50%) rotate(var(--a));
+  background: var(--line-strong); transition: opacity .3s ease;
 }
-#sector-sleep:focus-visible ~ .dial-ring label[for="sector-sleep"],
-#sector-trends:focus-visible ~ .dial-ring label[for="sector-trends"],
-#sector-imports:focus-visible ~ .dial-ring label[for="sector-imports"],
-#sector-alerts:focus-visible ~ .dial-ring label[for="sector-alerts"],
-#sector-reports:focus-visible ~ .dial-ring label[for="sector-reports"],
-#sector-settings:focus-visible ~ .dial-ring label[for="sector-settings"] {
-  box-shadow: var(--focus-ring);
-}
+.dial-ticks .tick.minor { width: 1.5px; height: 2.6%; background: var(--text-3); opacity: .45; }
 
-.dial-ring { position: absolute; inset: 0; }
-.sector {
-  position: absolute; left: 50%; top: 50%; width: 68px; height: 68px;
-  margin: -34px; border-radius: 50%;
-  display: grid; place-items: center; cursor: pointer; user-select: none;
-  background: var(--surface); border: 1px solid var(--line-strong);
-  color: var(--primary-strong); font-size: 13px;
-  transform: rotate(calc(var(--i) * 60deg)) translateY(calc(-1 * var(--dial-r))) rotate(calc(var(--i) * -60deg));
-}
-.sector span { display: inline-block; }
-.sector:hover { border-color: var(--accent); color: var(--accent-strong); }
+/* 当前刻度的高亮弧（60° 段） */
+.dial-arc { position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 2; }
+.dial-arc svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.dial-arc circle { fill: none; stroke: var(--c, var(--primary)); stroke-width: 1.6;
+  stroke-dasharray: 16.67 100; }
 
-/* 选中扇区高亮：每个 label 只能由自己的 radio 点亮（无 :has 依赖，逐个写） */
-#sector-sleep:checked ~ .dial-ring label[for="sector-sleep"],
-#sector-trends:checked ~ .dial-ring label[for="sector-trends"],
-#sector-imports:checked ~ .dial-ring label[for="sector-imports"],
-#sector-alerts:checked ~ .dial-ring label[for="sector-alerts"],
-#sector-reports:checked ~ .dial-ring label[for="sector-reports"],
-#sector-settings:checked ~ .dial-ring label[for="sector-settings"] {
-  border-color: var(--primary); background: var(--primary-soft);
-  color: var(--primary-strong); font-weight: 500;
+/* 指针：指向当前刻度；闲置态淡化 */
+.dial-needle {
+  position: absolute; left: 50%; top: 50%; width: 3px; height: 30%; margin-top: -30%; margin-left: -1.5px;
+  z-index: 3; transform-origin: 50% 100%; transform: rotate(0deg); opacity: .3; border-radius: 2px;
+  background: linear-gradient(180deg, var(--warn), rgba(169, 102, 10, .25));
+}
+.dial-needle::before { content: ""; position: absolute; top: -4px; left: -3px; width: 9px; height: 9px;
+  border-radius: 50%; background: var(--warn); }
+.dial-cap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 7;
+  width: 14px; height: 14px; border-radius: 50%; background: var(--surface);
+  box-shadow: 0 1px 3px rgba(14, 31, 42, .25), inset 0 0 0 1px var(--line-strong); }
+
+/* 功能标签：闲置态带名字；选中后其余缩成小圆环（视觉 26px，命中区 44px） */
+.dial-fbtn {
+  position: absolute; z-index: 6; transform: translate(-50%, -50%);
+  display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line); color: var(--text-2);
+  font-size: 13px; white-space: nowrap; cursor: pointer;
+}
+.dial-fbtn svg { width: 15px; height: 15px; color: var(--c); }
+.dial-fbtn:hover { background: var(--surface-2); color: var(--text); }
+.dial-fbtn::after { /* 命中区兜底：缩小态也要 ≥44px */
+  content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 100%; height: 100%; min-width: 44px; min-height: 44px; border-radius: 999px;
 }
 
-/* 选中扇区转到 12 点方向 */
-#sector-sleep:checked ~ .dial-ring { transform: rotate(0deg); }
-#sector-trends:checked ~ .dial-ring { transform: rotate(-60deg); }
-#sector-imports:checked ~ .dial-ring { transform: rotate(-120deg); }
-#sector-alerts:checked ~ .dial-ring { transform: rotate(-180deg); }
-#sector-reports:checked ~ .dial-ring { transform: rotate(-240deg); }
-#sector-settings:checked ~ .dial-ring { transform: rotate(-300deg); }
-
-/* 环在转，标签要反向转回来才不会倒着看 */
-#sector-trends:checked ~ .dial-ring .sector span { transform: rotate(60deg); }
-#sector-imports:checked ~ .dial-ring .sector span { transform: rotate(120deg); }
-#sector-alerts:checked ~ .dial-ring .sector span { transform: rotate(180deg); }
-#sector-reports:checked ~ .dial-ring .sector span { transform: rotate(240deg); }
-#sector-settings:checked ~ .dial-ring .sector span { transform: rotate(300deg); }
-
-/* 中心区域：只显示选中扇区的预览与「进入」 */
+/* 中心：闲置 56%，选中 72%（与参考原型同比例） */
 .dial-core {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: 58%; max-width: 250px; text-align: center;
+  position: absolute; left: 50%; top: 50%; width: 56%; aspect-ratio: 1;
+  transform: translate(-50%, -50%); border-radius: 50%; overflow: hidden; z-index: 5;
+  display: grid; place-items: center; text-align: center;
+  background: radial-gradient(circle at 50% 34%, var(--surface) 0%, var(--surface-2) 78%);
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 -12px 28px rgba(14, 31, 42, .06);
 }
-.core-date { font-size: 12px; color: var(--text-3); margin-bottom: 8px; }
-.core-panel, .core-enter { display: none; }
-.core-kicker { font-size: 11px; color: var(--text-3); margin: 0 0 2px; }
-.core-value {
-  font-size: 22px; line-height: 1.25; font-weight: 500; color: var(--text);
-  margin: 0 0 2px; font-variant-numeric: tabular-nums;
+@supports not (aspect-ratio: 1) {
+  .dial-core::before { content: ""; display: block; padding-bottom: 100%; }
 }
-.core-sub { font-size: 11px; color: var(--text-3); margin: 0 0 8px; }
-.core-enter {
-  width: fit-content; margin: 8px auto 0; min-height: 44px; line-height: 44px;
-  padding: 0 14px; border-radius: var(--r-control);
-  background: var(--primary); color: #fff; font-size: 13px;
+
+/* 闲置态：助手球 */
+.dial-orb { display: none; width: 100%; height: 100%; position: relative; place-items: center; cursor: pointer; }
+.dial-orb .orb-rings { position: absolute; inset: 0; pointer-events: none; }
+.dial-orb .orb-rings i { position: absolute; inset: 13%; border-radius: 50%; border: 1px solid var(--accent); opacity: .35; }
+.dial-orb .orb-ball {
+  position: relative; width: 46%; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 34% 28%, #9df3e4, #3ED3C0 48%, #11897a 100%);
+  box-shadow: 0 10px 24px rgba(14, 140, 127, .28), inset 0 2px 8px rgba(255, 255, 255, .45);
 }
+.dial-orb .orb-ball svg { width: 38%; height: 38%; color: #04201b; }
+.dial-orb .orb-hint { position: absolute; bottom: 9%; font-size: 12px; color: var(--text-3); }
+
+/* 选中态：功能卡 */
+.core-card { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center;
+  padding: 7% 11%; }
+.core-kicker { font-size: clamp(10px, 1.5vw, 12px); letter-spacing: 1px; margin: 0; }
+.core-value { font-size: clamp(16px, 3vw, 26px); font-weight: 600; line-height: 1.15; margin: 4px 0 0;
+  color: var(--text); font-variant-numeric: tabular-nums; }
+.core-sub { font-size: clamp(9px, 1.4vw, 11px); color: var(--text-3); margin: 2px 0 0; }
+.core-facts { list-style: none; margin: 8px 0 0; padding: 0; width: 100%;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; text-align: left; }
+.core-facts li { display: flex; flex-direction: column; padding-top: 3px; border-top: 1px solid var(--line);
+  font-size: clamp(8.5px, 1.2vw, 10.5px); color: var(--text-3); line-height: 1.35; }
+.core-facts b { font-size: clamp(10px, 1.7vw, 12px); color: var(--text); }
+.core-enter { display: none; margin: auto auto 0; padding: clamp(5px, .9vw, 7px) clamp(10px, 1.8vw, 14px);
+  border-radius: 999px; background: var(--primary); color: #fff; font-size: clamp(10px, 1.5vw, 12px);
+  font-weight: 600; min-height: 44px; line-height: 1.2; }
 .core-enter:hover { background: var(--primary-strong); color: #fff; text-decoration: none; }
-.core-note { font-size: 12px; color: var(--text-3); margin-top: 10px; }
+.core-note { position: absolute; bottom: 6%; left: 0; right: 0; font-size: 11px; color: var(--text-3); margin: 0; }
 
-#sector-sleep:checked ~ .dial-core [data-sector="sleep"],
-#sector-trends:checked ~ .dial-core [data-sector="trends"],
-#sector-imports:checked ~ .dial-core [data-sector="imports"],
-#sector-alerts:checked ~ .dial-core [data-sector="alerts"],
-#sector-reports:checked ~ .dial-core [data-sector="reports"],
-#sector-settings:checked ~ .dial-core [data-sector="settings"] { display: block; }
+/* 状态行 */
+.dial-status { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 14px 0 0;
+  color: var(--text-3); font-size: 13px; min-height: 22px; }
+.dial-status .pill { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+.dial-status .s { display: none; }
+.dial-hint { margin: 6px 0 0; font-size: 12px; color: var(--text-3); line-height: 1.6; text-align: center; }
+.chronos-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;
+  width: 100%; max-width: 470px; margin-top: 18px; }
 
-.dial-hint { margin: 12px 0 0; font-size: 12px; color: var(--text-3); line-height: 1.6; }
-.chronos-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+/* 助手抽屉 */
+.dial-backdrop { position: fixed; inset: 0; background: rgba(14, 31, 42, .38);
+  opacity: 0; pointer-events: none; transition: opacity .2s ease; z-index: 20; }
+.dial-backdrop label { position: absolute; inset: 0; }
+.dial-sheet { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 28px); z-index: 21;
+  width: min(92vw, 560px); background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 18px; padding: 16px 18px; box-shadow: var(--shadow-2);
+  opacity: 0; pointer-events: none; transition: opacity .24s ease, transform .24s cubic-bezier(.22, 1, .36, 1); }
+.sheet-head { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; }
+.sheet-orb { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 34% 28%, #9df3e4, #3ED3C0 60%, #11897a); }
+.sheet-orb svg { width: 15px; height: 15px; color: #04201b; }
+.sheet-head b { font-size: 14px; }
+.sheet-close { margin-left: auto; color: var(--text-3); font-size: 20px; cursor: pointer;
+  padding: 6px 10px; min-height: 44px; display: inline-flex; align-items: center; }
+.sheet-note { font-size: 12px; color: var(--text-2); margin: 0 0 10px; }
+.sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.sheet-actions .chip { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line-strong);
+  color: var(--primary); font-size: 12.5px; background: var(--surface-2); }
+.sheet-actions .chip:hover { background: var(--primary-soft); text-decoration: none; }
+.sheet-foot { font-size: 11px; color: var(--text-3); margin: 10px 0 0; }
 
-@media (max-width: 1279px) {
-  .chronos { grid-template-columns: 1fr; }
+/* 唤醒助手按钮：放在外环上，不放中心圆里（否则会被圆边裁掉） */
+.dial-mic { position: absolute; top: 4%; right: 6%; z-index: 8; width: 34px; height: 34px;
+  border-radius: 50%; border: 1px solid var(--line-strong); background: var(--surface);
+  color: var(--accent); display: none; place-items: center; cursor: pointer; }
+.dial-mic svg { width: 17px; height: 17px; }
+.dial-mic::after { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 44px; height: 44px; border-radius: 50%; }
+
+/* ---------- 状态：闲置 ---------- */
+#sector-idle:checked ~ section .dial-orb { display: grid; }
+#sector-idle:checked ~ section .dial-needle { opacity: .3; }
+#sector-idle:checked ~ section .dial-status .s-idle { display: inline; }
+#sector-idle:checked ~ section .core-note { display: block; }
+
+/* ---------- 状态：选中某个刻度 ---------- */
+#sector-sleep:checked ~ section .dial-needle,
+#sector-trends:checked ~ section .dial-needle,
+#sector-training:checked ~ section .dial-needle,
+#sector-alerts:checked ~ section .dial-needle,
+#sector-reports:checked ~ section .dial-needle,
+#sector-settings:checked ~ section .dial-needle { opacity: 1; }
+
+#sector-sleep:checked ~ section .dial-needle { transform: rotate(0deg); }
+#sector-trends:checked ~ section .dial-needle { transform: rotate(60deg); }
+#sector-training:checked ~ section .dial-needle { transform: rotate(120deg); }
+#sector-alerts:checked ~ section .dial-needle { transform: rotate(180deg); }
+#sector-reports:checked ~ section .dial-needle { transform: rotate(240deg); }
+#sector-settings:checked ~ section .dial-needle { transform: rotate(300deg); }
+
+#sector-sleep:checked ~ section .dial-arc { opacity: 1; transform: rotate(0deg); --c: #7C9CFF; }
+#sector-trends:checked ~ section .dial-arc { opacity: 1; transform: rotate(60deg); --c: #3ED3C0; }
+#sector-training:checked ~ section .dial-arc { opacity: 1; transform: rotate(120deg); --c: #F2B04C; }
+#sector-alerts:checked ~ section .dial-arc { opacity: 1; transform: rotate(180deg); --c: #F2799B; }
+#sector-reports:checked ~ section .dial-arc { opacity: 1; transform: rotate(240deg); --c: #B39DFF; }
+#sector-settings:checked ~ section .dial-arc { opacity: 1; transform: rotate(300deg); --c: #9FB6C4; }
+
+/* 中心放大到 72% 让位给功能卡 */
+#sector-sleep:checked ~ section .dial-core,
+#sector-trends:checked ~ section .dial-core,
+#sector-training:checked ~ section .dial-core,
+#sector-alerts:checked ~ section .dial-core,
+#sector-reports:checked ~ section .dial-core,
+#sector-settings:checked ~ section .dial-core { width: 72%; }
+
+/* 细分刻度淡出 */
+#sector-sleep:checked ~ section .tick.minor,
+#sector-trends:checked ~ section .tick.minor,
+#sector-training:checked ~ section .tick.minor,
+#sector-alerts:checked ~ section .tick.minor,
+#sector-reports:checked ~ section .tick.minor,
+#sector-settings:checked ~ section .tick.minor { opacity: 0; }
+
+/* 其余标签缩成小圆环 */
+#sector-sleep:checked ~ section .dial-fbtn,
+#sector-trends:checked ~ section .dial-fbtn,
+#sector-training:checked ~ section .dial-fbtn,
+#sector-alerts:checked ~ section .dial-fbtn,
+#sector-reports:checked ~ section .dial-fbtn,
+#sector-settings:checked ~ section .dial-fbtn {
+  width: 26px; height: 26px; padding: 0; justify-content: center; overflow: visible;
+  border-color: var(--c); background: var(--surface);
 }
+#sector-sleep:checked ~ section .dial-fbtn span,
+#sector-trends:checked ~ section .dial-fbtn span,
+#sector-training:checked ~ section .dial-fbtn span,
+#sector-alerts:checked ~ section .dial-fbtn span,
+#sector-reports:checked ~ section .dial-fbtn span,
+#sector-settings:checked ~ section .dial-fbtn span { display: none; }
+
+#sector-sleep:checked ~ section .dial-fbtn[for="sector-sleep"],
+#sector-trends:checked ~ section .dial-fbtn[for="sector-trends"],
+#sector-training:checked ~ section .dial-fbtn[for="sector-training"],
+#sector-alerts:checked ~ section .dial-fbtn[for="sector-alerts"],
+#sector-reports:checked ~ section .dial-fbtn[for="sector-reports"],
+#sector-settings:checked ~ section .dial-fbtn[for="sector-settings"] {
+  width: auto; height: auto; padding: 7px 12px; border-radius: 999px;
+  background: var(--c); border-color: var(--c); color: #fff; font-weight: 600;
+}
+#sector-sleep:checked ~ section .dial-fbtn[for="sector-sleep"] span,
+#sector-trends:checked ~ section .dial-fbtn[for="sector-trends"] span,
+#sector-training:checked ~ section .dial-fbtn[for="sector-training"] span,
+#sector-alerts:checked ~ section .dial-fbtn[for="sector-alerts"] span,
+#sector-reports:checked ~ section .dial-fbtn[for="sector-reports"] span,
+#sector-settings:checked ~ section .dial-fbtn[for="sector-settings"] span { display: inline; }
+#sector-sleep:checked ~ section .dial-fbtn[for="sector-sleep"] svg,
+#sector-trends:checked ~ section .dial-fbtn[for="sector-trends"] svg,
+#sector-training:checked ~ section .dial-fbtn[for="sector-training"] svg,
+#sector-alerts:checked ~ section .dial-fbtn[for="sector-alerts"] svg,
+#sector-reports:checked ~ section .dial-fbtn[for="sector-reports"] svg,
+#sector-settings:checked ~ section .dial-fbtn[for="sector-settings"] svg { color: #fff; }
+
+/* 预览态隐藏底部计数：信息在状态行与指标卡里都有，避免和「进入」重叠 */
+#sector-sleep:checked ~ section .core-note,
+#sector-trends:checked ~ section .core-note,
+#sector-training:checked ~ section .core-note,
+#sector-alerts:checked ~ section .core-note,
+#sector-reports:checked ~ section .core-note,
+#sector-settings:checked ~ section .core-note { display: none; }
+
+#sector-sleep:checked ~ section .core-card[data-sector="sleep"],
+#sector-trends:checked ~ section .core-card[data-sector="trends"],
+#sector-training:checked ~ section .core-card[data-sector="training"],
+#sector-alerts:checked ~ section .core-card[data-sector="alerts"],
+#sector-reports:checked ~ section .core-card[data-sector="reports"],
+#sector-settings:checked ~ section .core-card[data-sector="settings"] { display: flex; }
+#sector-sleep:checked ~ section .core-card .core-enter,
+#sector-trends:checked ~ section .core-card .core-enter,
+#sector-training:checked ~ section .core-card .core-enter,
+#sector-alerts:checked ~ section .core-card .core-enter,
+#sector-reports:checked ~ section .core-card .core-enter,
+#sector-settings:checked ~ section .core-card .core-enter { display: inline-flex; align-items: center; }
+
+#sector-sleep:checked ~ section .dial-status .s-preview,
+#sector-trends:checked ~ section .dial-status .s-preview,
+#sector-training:checked ~ section .dial-status .s-preview,
+#sector-alerts:checked ~ section .dial-status .s-preview,
+#sector-reports:checked ~ section .dial-status .s-preview,
+#sector-settings:checked ~ section .dial-status .s-preview { display: inline; }
+
+#sector-sleep:checked ~ section .dial-mic,
+#sector-trends:checked ~ section .dial-mic,
+#sector-training:checked ~ section .dial-mic,
+#sector-alerts:checked ~ section .dial-mic,
+#sector-reports:checked ~ section .dial-mic,
+#sector-settings:checked ~ section .dial-mic { display: grid; }
+
+/* 焦点环画在标签上（radio 是隐藏的） */
+#sector-sleep:focus-visible ~ section .dial-fbtn[for="sector-sleep"],
+#sector-trends:focus-visible ~ section .dial-fbtn[for="sector-trends"],
+#sector-training:focus-visible ~ section .dial-fbtn[for="sector-training"],
+#sector-alerts:focus-visible ~ section .dial-fbtn[for="sector-alerts"],
+#sector-reports:focus-visible ~ section .dial-fbtn[for="sector-reports"],
+#sector-settings:focus-visible ~ section .dial-fbtn[for="sector-settings"],
+#sector-assistant:focus-visible ~ section .dial-orb,
+#sector-idle:focus-visible ~ section .dial-orb { box-shadow: var(--focus-ring); }
+
+/* ---------- 状态：助手 ---------- */
+#sector-assistant:checked ~ section .dial-status .s-asst { display: inline; }
+#sector-assistant:checked ~ .dial-backdrop { opacity: 1; pointer-events: auto; }
+#sector-assistant:checked ~ .dial-sheet { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
 
 @media (max-width: 767px) {
   .chronos-tiles { grid-template-columns: 1fr; }
+  .core-facts { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  /* 只有系统允许动效时才给表盘旋转与悬停位移；减少动态时一律瞬时切换 */
-  .dial-ring { transition: transform .45s ease; }
-  .sector span { transition: transform .45s ease; }
-  .sector { transition: border-color .18s ease, background-color .18s ease; }
-  .sector:hover { transform: rotate(calc(var(--i) * 60deg)) translateY(calc(-1 * var(--dial-r) - 3px)) rotate(calc(var(--i) * -60deg)); }
+  .dial-needle { transition: transform .45s cubic-bezier(.34, 1.56, .64, 1), opacity .3s ease; }
+  .dial-arc { transition: transform .45s cubic-bezier(.34, 1.56, .64, 1), opacity .3s ease; }
+  .dial-core { transition: width .45s cubic-bezier(.34, 1.56, .64, 1); }
+  .dial-fbtn { transition: width .25s ease, height .25s ease, background .18s ease, color .18s ease; }
+  .dial-orb .orb-rings i { animation: orbPulse 3.2s ease-out infinite; }
+  .dial-orb .orb-rings i:nth-child(2) { animation-delay: 1.1s; }
+  .dial-orb .orb-rings i:nth-child(3) { animation-delay: 2.2s; }
+}
+@keyframes orbPulse {
+  0% { transform: scale(.6); opacity: 0; }
+  30% { opacity: .45; }
+  100% { transform: scale(1.12); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dial-needle, .dial-arc, .dial-core, .dial-fbtn { transition: none; }
+  .dial-orb .orb-rings i { animation: none; opacity: .2; }
 }

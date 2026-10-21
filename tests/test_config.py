@@ -120,7 +120,7 @@ def test_env_file_is_read(tmp_path):
 
     assert settings.port == 8123
     assert settings.ai_enabled
-    assert settings.deepseek_api_key == "sk-test-only"
+    assert settings.ai_api_key == "sk-test-only"
 
 
 def test_process_env_overrides_env_file(tmp_path):

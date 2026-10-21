@@ -1,4 +1,8 @@
-"""T05 时钟模式：六扇区单选 + 中心预览 + 明确进入 + 降级与一致性。
+"""T05/T11 时钟模式：六刻度单选 + 中心预览 + 明确进入 + 降级与一致性。
+
+T11 把"六扇区环"换成"六刻度拨盘 + 中心助手"，结构变了，断言随之更新——
+不是放宽：仍然是 6 个单选刻度、6 张中心预览、每刻度一个「进入」、标签不是链接、
+减少动态时不动画、两模式同口径。
 
 覆盖任务书要求：
 - 环形导航可选择功能、中心预览、明确操作后进入详情（两步，不直接跳转）；
@@ -27,7 +31,7 @@ from health_agent.ui.auth import hash_password
 
 from conftest import make_record, read_css
 
-SECTOR_PAGES = ["/sleep", "/trends", "/imports", "/alerts", "/reports", "/settings"]
+SECTOR_PAGES = ["/sleep", "/trends", "/training", "/alerts", "/reports", "/settings"]
 
 
 def _client(tmp_path, *, password_hash: str | None = None) -> TestClient:
@@ -58,23 +62,22 @@ def test_dial_has_six_radio_sectors_with_matching_labels(tmp_path):
     with _client(tmp_path) as client:
         body = client.get("/chronos").text
 
-    radios = re.findall(r'<input class="sector-input"[^>]*id="(sector-[a-z]+)"', body)
-    labels = re.findall(r'<label class="sector" for="(sector-[a-z]+)"', body)
+    radios = re.findall(r'<input class="sector-input"[^>]*id="(sector-[a-z]+)"[^>]*data-angle', body)
+    labels = re.findall(r'<label class="dial-fbtn" for="(sector-[a-z]+)"', body)
     assert len(radios) == 6
-    assert radios == labels  # 每个 radio 都有对应 label，顺序一致
-    assert body.count('name="sector"') == 6  # 同一组单选
-    assert body.count("checked") == 1  # 默认只选中一个
+    assert radios == labels  # 每个刻度 radio 都有对应 label，顺序一致
+    assert body.count('name="sector"') == 8  # 6 个刻度 + 闲置 + 助手，同一组单选
+    assert len(re.findall(r'<input class="sector-input"[^>]*checked', body)) == 1  # 默认只选中一个
 
 
 def test_center_has_preview_and_enter_link_per_sector(tmp_path):
     with _client(tmp_path) as client:
         body = client.get("/chronos").text
 
-    panels = re.findall(r'class="core-panel" data-sector="([a-z]+)"', body)
-    enters = re.findall(r'class="core-enter" data-sector="([a-z]+)" href="([^"]+)"', body)
-    assert panels == ["sleep", "trends", "imports", "alerts", "reports", "settings"]
-    assert [e[0] for e in enters] == panels
-    assert [e[1] for e in enters] == SECTOR_PAGES
+    panels = re.findall(r'class="core-card" data-sector="([a-z]+)"', body)
+    enters = re.findall(r'class="core-enter" href="([^"]+)"', body)
+    assert panels == ["sleep", "trends", "training", "alerts", "reports", "settings"]
+    assert enters == SECTOR_PAGES
 
 
 def test_sectors_are_labels_not_links(tmp_path):
@@ -82,8 +85,9 @@ def test_sectors_are_labels_not_links(tmp_path):
     with _client(tmp_path) as client:
         body = client.get("/chronos").text
 
-    assert "<label class=\"sector\"" in body
-    assert body.count('<a class="sector"') == 0
+    assert '<label class="dial-fbtn"' in body
+    assert body.count('class="dial-fbtn"') == 6
+    assert body.count('<a class="dial-fbtn"') == 0
     # 明确入口只有每扇区一个「进入」链接
     assert body.count('class="core-enter"') == 6
 
@@ -182,7 +186,7 @@ def test_mode_switch_home_uses_same_dial_and_values(tmp_path):
         chronos = client.get("/chronos").text
 
     assert "表盘导航" in home
-    assert 'class="sector"' in home
+    assert 'class="dial-fbtn"' in home
     assert "6 小时 40 分" in home and "6 小时 40 分" in chronos
 
 
@@ -194,18 +198,18 @@ def test_reduced_motion_only_animates_when_allowed():
     block = re.search(
         r"@media \(prefers-reduced-motion: no-preference\) \{(.*?)\n\}", css, re.S
     ).group(1)
-    assert ".dial-ring { transition: transform" in block
+    assert ".dial-needle { transition: transform" in block
     # 过渡不允许出现在 media 查询之外（减少动态时必须是瞬时切换）
     outside = css.replace(block, "")
-    assert ".dial-ring { transition" not in outside
+    assert ".dial-needle { transition" not in outside
 
 
 def test_all_six_checked_states_have_css_rules():
     css = read_css()
 
-    for key in ("sleep", "trends", "imports", "alerts", "reports", "settings"):
-        assert f'#sector-{key}:checked ~ .dial-ring {{ transform: rotate' in css, key
-        assert f'#sector-{key}:checked ~ .dial-core [data-sector="{key}"]' in css, key
+    for key in ("sleep", "trends", "training", "alerts", "reports", "settings"):
+        assert f"#sector-{key}:checked ~ section .dial-needle {{ transform: rotate" in css, key
+        assert f'#sector-{key}:checked ~ section .core-card[data-sector="{key}"]' in css, key
 
 
 def test_no_fabricated_health_score_or_judgement(tmp_path):

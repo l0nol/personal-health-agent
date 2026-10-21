@@ -20,7 +20,10 @@ from datetime import date, timedelta
 from ..analytics.aggregate import summarize
 from ..analytics.baseline import compute_baseline
 from ..catalog import METRICS, get_metric
-from ..reports.format import format_number
+from ..guidance.contract import Guidance
+from ..reports.format import format_minutes, format_number
+from ..storage import alerts as alert_store
+from ..storage import training as training_store
 from .pages import DIAL_PAGES
 
 
@@ -62,9 +65,23 @@ class Tile:
     reference: Reference
 
 
+#: 刻度配色（T11）。只表示"哪个功能被选中"，不是健康评分，也不要改成红绿。
+DIAL_ACCENTS: dict[str, str] = {
+    "sleep": "#7C9CFF",
+    "trends": "#3ED3C0",
+    "training": "#F2B04C",
+    "alerts": "#F2799B",
+    "reports": "#B39DFF",
+    "settings": "#9FB6C4",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class Sector:
-    """表盘扇区：身份信息来自 `pages.py`，预览值来自同一份 tiles/计数。"""
+    """表盘刻度：身份来自 `pages.py`，预览值全部取自既有统计函数。
+
+    `facts` 是中心卡的两条事实；`accent` 只用于该刻度的配色。
+    """
 
     key: str
     idx: int
@@ -73,6 +90,8 @@ class Sector:
     kicker: str
     value_text: str
     sub: str
+    facts: tuple[tuple[str, str], ...] = ()
+    accent: str = ""
 
 
 # ---------------- 装配函数 ----------------
@@ -157,20 +176,106 @@ def _tile_foot(tile: Tile) -> str:
     return f"近 7 天有效 {tile.days}/7 天" if tile.days else "近 7 天无数据"
 
 
-def chronos_sectors(tiles: list[Tile], counts: dict, conflicts: int, unread: int, end: date) -> list[Sector]:
-    """表盘六扇区：身份来自 pages.py，预览值全部取自 tiles / 计数，不新算任何数。"""
-    sleep, hr = tiles[0], tiles[1]
-    preview = {
-        "sleep": ("昨夜睡眠", format_number(sleep.value, sleep.unit, sleep.metric), _tile_foot(sleep)),
-        "trends": ("静息心率", format_number(hr.value, hr.unit, hr.metric), _tile_foot(hr)),
-        "imports": ("待确认记录", f"{counts['pending']} 条", "写入后仍需逐条确认"),
-        "alerts": ("未读提醒", f"{unread} 条", "同一窗口不重复 · 冷却 72 小时"),
-        "reports": ("已确认记录", f"{counts['confirmed']} 条", f"数据截至 {end.isoformat()}"),
-        "settings": ("界面模式", "时钟", "数据只在本机存储"),
+def chronos_sectors(
+    conn,
+    tiles: list[Tile],
+    counts: dict,
+    conflicts: int,
+    unread: int,
+    end: date,
+    *,
+    guidance: Guidance | None = None,
+) -> list[Sector]:
+    """拨盘六个刻度的预览。
+
+    所有数字都来自 `summarize()` / `reference()` / 计数 / `build_guidance()`，
+    与简洁模式同一口径；没有数据就写"暂无"，不补 0。
+    """
+    start = end - timedelta(days=6)
+    sleep = summarize(conn, "night_sleep_minutes", start, end)
+    hr = summarize(conn, "resting_hr_bpm", start, end)
+    hr_ref = reference(conn, "resting_hr_bpm", end)
+    weekly = training_store.count_sessions(conn, start=start, end=end)
+    last_session = training_store.list_sessions(conn, start=end - timedelta(days=13), end=end, limit=1)
+    last_alert = alert_store.list_alerts(conn, limit=1)
+
+    sleep_latest = sleep.points[-1] if sleep.points else None
+    hr_latest = hr.points[-1] if hr.points else None
+
+    def sleep_mean_text() -> str:
+        if sleep.sample_days < 3:
+            return "样本不足"
+        return format_minutes(sleep.mean or 0)
+
+    parts_text = "—"
+    if last_session:
+        session = last_session[0]
+        gap = (end - date.fromisoformat(session.session_date)).days
+        if gap <= 1:
+            parts_text = "/".join(session.body_part_labels) or "未填部位"
+        else:
+            parts_text = f"{gap} 天前"
+
+    preview: dict[str, tuple[str, str, str, tuple[tuple[str, str], ...]]] = {
+        "sleep": (
+            "昨夜睡眠",
+            format_minutes(sleep_latest.value) if sleep_latest else "暂无",
+            "近 7 天窗口 · 只看已确认",
+            (
+                ("近 7 天均值", sleep_mean_text()),
+                ("覆盖", f"{sleep.sample_days}/7 天"),
+            ),
+        ),
+        "trends": (
+            "静息心率",
+            format_number(hr_latest.value, "bpm", "resting_hr_bpm") if hr_latest else "暂无",
+            "个人基线用中位数 + MAD",
+            (
+                ("最近一次", format_number(hr_latest.value, "bpm", "resting_hr_bpm") if hr_latest else "—"),
+                ("基线", "已建立" if hr_ref.state == "active" else "样本不足"),
+            ),
+        ),
+        "training": (
+            "今日建议",
+            guidance.category_label if guidance else "暂无",
+            guidance.headline if guidance else "先记录睡眠与状态",
+            (
+                ("近 48 小时", parts_text),
+                ("本周训练", f"{weekly} 次"),
+            ),
+        ),
+        "alerts": (
+            "未读提醒",
+            f"{unread} 条",
+            "同一窗口不重复 · 冷却 72 小时",
+            (
+                ("最近规则", last_alert[0]["rule_id"] if last_alert else "—"),
+                ("待裁决冲突", f"{conflicts} 条"),
+            ),
+        ),
+        "reports": (
+            "数字可追溯",
+            f"{counts.get('confirmed', 0)} 条已确认",
+            f"数据截至 {end.isoformat()}",
+            (
+                ("待确认", f"{counts.get('pending', 0)} 条"),
+                ("记录总数", f"{counts.get('total', 0)} 条"),
+            ),
+        ),
+        "settings": (
+            "界面模式",
+            "时钟模式",
+            "与简洁模式同一套数据",
+            (
+                ("睡眠目标", "默认参考值 · 环境变量可改"),
+                ("模式切换", "设置页可切回简洁"),
+            ),
+        ),
     }
+
     sectors: list[Sector] = []
     for page in DIAL_PAGES:
-        kicker, value_text, sub = preview[page.key]
+        kicker, value_text, sub, facts = preview[page.key]
         sectors.append(
             Sector(
                 key=page.key,
@@ -180,6 +285,49 @@ def chronos_sectors(tiles: list[Tile], counts: dict, conflicts: int, unread: int
                 kicker=kicker,
                 value_text=value_text,
                 sub=sub,
+                facts=facts,
+                accent=DIAL_ACCENTS.get(page.key, ""),
             )
         )
     return sectors
+
+
+def assistant_shortcuts(guidance: Guidance | None, hrefs: dict[str, str]) -> list[dict[str, str]]:
+    """助手快捷动作：只做"解释 + 导航 + 预填"，不写库、不诊断。
+
+    预填一律走 GET 参数落到 `/training` 表单，用户确认后才提交（POST + CSRF）。
+    """
+    training = hrefs.get("training", "/training")
+    items: list[dict[str, str]] = [
+        {"label": "今天适合练什么？", "href": training + "?from=assistant&focus=advice"},
+        {"label": "打开睡眠页", "href": hrefs.get("sleep", "/sleep")},
+        {"label": "看看提醒", "href": hrefs.get("alerts", "/alerts")},
+    ]
+    if guidance is None:
+        return items
+    if guidance.category == "rest":
+        items.insert(
+            1,
+            {
+                "label": "记录今天的状态",
+                "href": training + "?from=assistant&focus=feedback#feedback",
+            },
+        )
+    elif guidance.category == "light_activity":
+        items.insert(
+            1,
+            {
+                "label": "记一次轻松活动（预填）",
+                "href": training + "?from=assistant&type=walking&duration=25&content=轻松步行",
+            },
+        )
+    elif guidance.category == "regular_training":
+        budget = ""
+        items.insert(
+            1,
+            {
+                "label": "记一次训练（预填）",
+                "href": training + f"?from=assistant&type=strength&duration={budget or 40}",
+            },
+        )
+    return items

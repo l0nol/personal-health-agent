@@ -93,11 +93,12 @@ def test_rendered_nav_contains_every_page_label(tmp_path):
 
 
 def test_dial_sectors_match_registry(tmp_path):
+    """刻度清单与 pages.py 一致（T11 后标签类名改为 dial-fbtn，断言同步）。"""
     with _client(tmp_path) as client:
         body = client.get("/chronos").text
     for page in DIAL_PAGES:
         assert f'id="sector-{page.key}"' in body
-        assert f'<label class="sector" for="sector-{page.key}"' in body
+        assert f'<label class="dial-fbtn" for="sector-{page.key}"' in body
         assert f'href="{page.href}"' in body
         assert page.dial_label in body
 
@@ -149,10 +150,19 @@ def test_base_template_keeps_extension_blocks():
 
 
 def test_templates_do_not_contain_inline_scripts():
-    """零 JS 基线：任何模板里出现 <script> 都必须是经过裁决的（当前没有）。"""
+    """零 JS 基线：脚本只允许出现在 base.html 的 scripts 扩展块内。
+
+    T11 用户批准拖拽旋转后，时钟模式引入了唯一一段脚本；放宽的范围严格限定为
+    "块内"，无脚本时页面仍必须可用（由 T11 的键盘/点击用例保证）。
+    """
     for path in TEMPLATES.glob("*.html"):
         source = re.sub(r"\{#.*?#\}", "", path.read_text(encoding="utf-8"), flags=re.S)
-        assert "<script" not in source, path.name
+        if "<script" not in source:
+            continue
+        block = re.search(r"\{% block scripts %\}(.*?)\{% endblock %\}", source, re.S)
+        assert block is not None, f"{path.name} 的脚本不在 scripts 块内"
+        outside = source.replace(block.group(1), "")
+        assert "<script" not in outside, f"{path.name} 在块外还有脚本"
 
 
 def test_mobile_browser_compatibility_rules():

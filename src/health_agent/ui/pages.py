@@ -40,7 +40,9 @@ PAGES: tuple[Page, ...] = (
     Page("trends", "/trends", "指标趋势", "分析", "趋势", 1),
     Page("reports", "/reports", "报告", "分析", "报告", 4),
     Page("records", "/records", "记录", "数据"),
-    Page("imports", "/imports", "导入", "数据", "导入", 2),
+    # T11 裁决：表盘六个刻度为 睡眠/趋势/训练/提醒/报告/设置；导入是低频动作，留在普通入口
+    Page("training", "/training", "训练", "数据", "训练", 2),
+    Page("imports", "/imports", "导入", "数据"),
     Page("conflicts", "/conflicts", "冲突", "数据"),
     Page("alerts", "/alerts", "提醒", "其他", "提醒", 3),
     Page("settings", "/settings", "设置与隐私", "其他", "设置", 5),

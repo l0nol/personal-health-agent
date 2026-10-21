@@ -122,9 +122,36 @@ def weight_page(request: Request, conn=Depends(get_db)):
 ## 7. 新增一条提醒规则
 
 1. `src/health_agent/rules/engine.py` 的 `ALL_RULES` 加规则函数（返回 reason / suggestion / evidence）；
-2. 阈值从 `config.py` 的环境变量读，**不要写死数字**，也不要加"能在界面上改"的假控件；
+2. 阈值从 `config.py` 的环境变量读，**不要写死数字**，也不要加"能在界面上改"的假控件
+   （唯一的可写配置例外见 §7.5）；
 3. 在 `tests/test_rules.py` 加触发/去重/冷却测试；
 4. 提醒卡片会自动出现——模板按 `rule_id` 渲染，不需要改 UI。
+
+---
+
+## 7.5 配置项什么时候可以写进界面
+
+默认规则仍是"阈值只读"：环境变量是唯一事实源，页面上不放看起来能改的控件。
+唯一的例外是 `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`（`设置 → AI 分析接口`），
+判据是这三条同时成立：
+
+1. **改了不影响口径**：它只决定"文案由谁改写"，不参与统计、基线、提醒判断；
+2. **改错有安全网**：密钥填错最坏结果是退回本地模板文案，数据不受影响；
+3. **写下去的东西用户看得见**：写的是本机 `.env`，不是藏在数据库里的另一份副本。
+
+不满足这三条的，一律只读 + 指向环境变量。做成可写时照这个模板：
+
+- 写盘只有一处：`config.save_ai_config()`（原子替换、保留其它行与注释；
+  `None` = 不改、`""` = 删除，**别把"没填"当"清空"**）；
+- 写完重新装载：`load_settings(project_root=settings.env_path.parent)`，
+  再 `request.app.state.settings = 新值`。路由闭包读的是同一个 `settings` 名字，
+  所以改完立即生效、不用重启；
+- 密钥**永不回显**，只给尾号（`Settings.ai_key_tail`；短串不显示尾号，
+  免得把"测试"这类占位符印在页面上）；
+- "试一试"与"保存"是两件事：试连走 POST，不写文件、不落 `ai_call_log`、不产生分析；
+- 进程环境变量优先于 `.env`，被压住时要明说是哪几个变量（`config.ai_env_override_keys()`）；
+- 回归测试在 `tests/test_ai_config.py`（预设解析、`.env` 往返、留空/清除语义、
+  密钥不落页面、GET 零网络、试连成败两条路径）。
 
 ---
 
