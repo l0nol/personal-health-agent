@@ -5,6 +5,8 @@
     python -m health_agent.cli import <file> --commit
     python -m health_agent.cli stats
     python -m health_agent.cli conflicts
+    python -m health_agent.cli confirm --list
+    python -m health_agent.cli confirm --batch 262bc873 --yes
     python -m health_agent.cli serve
     python -m health_agent.cli passwd
     python -m health_agent.cli backup
@@ -12,6 +14,7 @@
     python -m health_agent.cli export --format csv --out records.csv
 
 import 默认只预览、不写库；要写库必须显式加 --commit。
+confirm 默认也只预览，加 --yes 才真的确认；确认范围永远是"一个批次"，不是所有 pending。
 """
 
 from __future__ import annotations
@@ -176,6 +179,73 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
             f"旧={row['existing_record_id'] and row['existing_record_id'][:8]}  "
             f"新={row['incoming_record_id'][:8]}"
         )
+    conn.close()
+    return 0
+
+
+def cmd_confirm(args: argparse.Namespace) -> int:
+    """按批次确认待确认记录。
+
+    为什么必须指定批次：批量确认最容易出的事故是把用户**故意留着**的待确认记录
+    一起确认掉。这里只认批次（或它的唯一前缀），并且默认只预览。
+    """
+    from .storage import lifecycle
+
+    conn, db_path = _open_db(args)
+    batches = [
+        row
+        for row in conn.execute(
+            """
+            SELECT r.batch_id AS batch_id,
+                   COALESCE(b.file_name, '（无批次）') AS file_name,
+                   COUNT(*) AS n, MIN(r.record_date) AS d_from, MAX(r.record_date) AS d_to
+              FROM records r LEFT JOIN import_batches b ON b.batch_id = r.batch_id
+             WHERE r.verification_status = 'pending'
+             GROUP BY r.batch_id
+             ORDER BY b.imported_at DESC, b.rowid DESC, n DESC
+            """
+        ).fetchall()
+    ]
+    if args.list or not args.batch:
+        print(f"数据库: {db_path}")
+        if not batches:
+            print("没有待确认记录。")
+            conn.close()
+            return 0
+        print(f"待确认 {sum(b['n'] for b in batches)} 条，分 {len(batches)} 批：")
+        for batch in batches:
+            key = (batch["batch_id"] or "—")[:8]
+            print(
+                f"  {key:<9} {batch['file_name']:<44} {batch['n']:>3} 条  "
+                f"{batch['d_from']} ~ {batch['d_to']}"
+            )
+        print("\n用 `confirm --batch <前缀> --yes` 确认某一批。")
+        conn.close()
+        return 0 if args.list else 2
+
+    prefix = args.batch.strip().lower()
+    hits = [b for b in batches if (b["batch_id"] or "").lower().startswith(prefix)]
+    if not hits:
+        print(f"没有以 {prefix!r} 开头的待确认批次。先跑 `confirm --list`。", file=sys.stderr)
+        conn.close()
+        return 1
+    if len(hits) > 1:
+        print(f"{prefix!r} 匹配到 {len(hits)} 个批次，请写得更长一点：", file=sys.stderr)
+        for b in hits:
+            print(f"  {b['batch_id'][:8]}  {b['file_name']}  {b['n']} 条", file=sys.stderr)
+        conn.close()
+        return 1
+
+    target = hits[0]
+    print(f"批次 {target['batch_id'][:8]}  {target['file_name']}")
+    print(f"将确认 {target['n']} 条（{target['d_from']} ~ {target['d_to']}），其它批次的待确认记录不受影响。")
+    if not args.yes:
+        print("这是预览。确认无误后加 --yes 执行。")
+        conn.close()
+        return 0
+
+    result = lifecycle.confirm_batch(conn, target["batch_id"])
+    print(f"已确认 {result['confirmed']} 条，跳过 {result['skipped']} 条（无值或与已确认记录冲突）。")
     conn.close()
     return 0
 
@@ -395,6 +465,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("import", cmd_import, "导入 JSON/CSV；默认只预览"),
         ("stats", cmd_stats, "查看记录统计"),
         ("conflicts", cmd_conflicts, "查看待裁决冲突"),
+        ("confirm", cmd_confirm, "按批次确认待确认记录（默认只预览）"),
         ("serve", cmd_serve, "启动本地界面"),
         ("passwd", cmd_passwd, "生成访问密码的 hash"),
         ("backup", cmd_backup, "备份数据库到 zip"),
@@ -406,6 +477,10 @@ def build_parser() -> argparse.ArgumentParser:
         sub.set_defaults(handler=handler)
         if name == "serve":
             sub.add_argument("--port", type=int, default=None, help="覆盖端口")
+        if name == "confirm":
+            sub.add_argument("--list", action="store_true", help="只列出待确认批次")
+            sub.add_argument("--batch", default="", help="批次 id（可只写前缀）")
+            sub.add_argument("--yes", action="store_true", help="真的执行确认（不加只预览）")
         if name == "backup":
             sub.add_argument("--out", help="备份目录（默认 data/backup）")
         if name == "restore":

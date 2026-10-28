@@ -2,21 +2,26 @@
    components.css — 组件层：横幅、卡片、指标卡、参照范围行、表格、
    标签、按钮、表单、分段控件、图表、提示、步骤条、提醒布局、链接网格。
    新增可复用组件加在这里；页面私有样式放 pages.css。
+
+   深色底上的三条基本原则：
+   1) 层次靠"亮度差 + 1px 描边"，不靠大面积阴影；
+   2) 图表线/柱跟随 --mod（模块色），没有 --mod 时退回主色；
+   3) 语义色只用于提示与状态，不用来给健康数据着色。
    ============================================================ */
 
 .banner {
   padding: 10px 14px; border-radius: var(--r-control);
   font-size: 13px; margin-bottom: 16px; border: 1px solid transparent;
 }
-.banner.ok { background: var(--accent-soft); color: var(--accent-strong); }
-.banner.bad { background: var(--danger-soft); color: var(--danger); }
-.banner.warn { background: var(--warn-soft); color: var(--warn); }
+.banner.ok { background: var(--accent-soft); color: var(--accent-strong); border-color: rgba(45, 212, 191, .22); }
+.banner.bad { background: var(--danger-soft); color: var(--danger); border-color: rgba(236, 118, 109, .22); }
+.banner.warn { background: var(--warn-soft); color: var(--warn); border-color: rgba(224, 163, 74, .22); }
 
 .card {
-  background: var(--surface);
+  background: linear-gradient(180deg, rgba(17, 28, 45, .86) 0%, rgba(10, 19, 33, .86) 100%);
   border: 1px solid var(--line);
   border-radius: var(--r-card);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--shadow-1), inset 0 1px 0 rgba(255, 255, 255, .035);
   padding: 18px 20px;
   margin-bottom: 18px;
 }
@@ -35,27 +40,29 @@
 }
 .tile {
   display: flex; flex-direction: column; gap: 6px;
-  background: var(--surface); border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(18, 30, 48, .8) 0%, rgba(11, 21, 36, .8) 100%);
+  border: 1px solid var(--line);
   border-radius: var(--r-card); box-shadow: var(--shadow-1);
   padding: 14px 16px; color: var(--text); min-height: 108px;
+  transition: border-color .16s ease, transform .16s ease;
 }
 .stat-card { min-height: 132px; }
-.tile:hover { border-color: var(--line-strong); text-decoration: none; }
+.tile:hover { border-color: var(--line-strong); text-decoration: none; transform: translateY(-1px); }
 .tile-label { font-size: 12px; color: var(--text-2); display: flex; align-items: center; justify-content: space-between; }
-.tile-value { font-size: 24px; line-height: 32px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.tile-value { font-size: 24px; line-height: 32px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
 .tile-foot { font-size: 12px; color: var(--text-3); margin-top: auto; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); display: inline-block; }
-.dot.ok { background: var(--accent); }
+.dot.ok { background: var(--accent); box-shadow: 0 0 8px rgba(45, 212, 191, .5); }
 .dot.warn { background: var(--warn); }
 .dot.none { background: var(--line-strong); }
 
 /* 参照范围行（T04）：个人基线动态计算，不足即显示不足，不用默认值冒充个性化 */
 .ref-row {
   margin-top: 8px; padding: 6px 10px;
-  background: var(--surface-2); border-left: 3px solid var(--line-strong);
+  background: rgba(255, 255, 255, .035); border-left: 3px solid var(--line-strong);
   border-radius: 0 6px 6px 0; font-size: 12px; line-height: 1.5;
 }
-.ref-row.is-insufficient { background: var(--warn-soft); border-left-color: #E3C48F; color: var(--warn); }
+.ref-row.is-insufficient { background: var(--warn-soft); border-left-color: var(--warn); color: var(--warn); }
 .ref-label { color: var(--text-2); margin-right: 6px; }
 .ref-value { color: var(--text); }
 .ref-detail { margin-top: 4px; }
@@ -71,18 +78,19 @@
   vertical-align: top; font-size: 13px;
 }
 .table th, table th { color: var(--text-2); font-weight: 500; font-size: 12px; }
+
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 
 .tag {
-  display: inline-block; padding: 1px 8px; border-radius: 999px;
-  font-size: 12px; background: var(--surface-2); color: var(--text-2);
+  display: inline-block; padding: 1px 8px; border-radius: var(--r-pill);
+  font-size: 12px; background: rgba(255, 255, 255, .06); color: var(--text-2);
   border: 1px solid transparent;
 }
 .tag.pending { background: var(--warn-soft); color: var(--warn); }
 .tag.confirmed { background: var(--accent-soft); color: var(--accent-strong); }
 .tag.rejected, .tag.revoked { background: var(--danger-soft); color: var(--danger); }
-.tag.superseded { background: var(--surface-2); color: var(--text-3); }
-.tag.active { background: var(--primary-soft); color: var(--primary); }
+.tag.superseded { background: rgba(255, 255, 255, .05); color: var(--text-3); }
+.tag.active { background: var(--primary-soft); color: var(--primary-strong); }
 .tag.provisional { background: transparent; border: 1px dashed var(--line-strong); color: var(--text-2); }
 .tag.verified { background: transparent; border: 1px solid var(--accent); color: var(--accent-strong); }
 
@@ -94,20 +102,24 @@
 
 .btn, button {
   font: inherit; font-size: 13px; padding: 8px 14px; min-height: 44px;
-  border-radius: var(--r-control); border: 1px solid var(--primary);
-  background: var(--primary); color: #fff; cursor: pointer;
+  border-radius: var(--r-control); border: 1px solid rgba(120, 175, 255, .42);
+  background: linear-gradient(180deg, #4A87EC, #2E63C4); color: #F5FAFF; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
+  transition: filter .16s ease, background .16s ease, border-color .16s ease;
 }
-.btn:hover, button:hover { background: var(--primary-strong); text-decoration: none; }
-.btn.secondary { background: var(--surface); color: var(--primary); border-color: var(--line-strong); }
-.btn.secondary:hover { background: var(--surface-2); }
-.btn.primary { background: var(--primary); }
-.mini { font-size: 12px; padding: 5px 10px; min-height: 32px; background: var(--primary); position: relative; }
+.btn:hover, button:hover { filter: brightness(1.08); text-decoration: none; }
+.btn.secondary {
+  background: rgba(255, 255, 255, .05); color: var(--text);
+  border-color: var(--line-strong); filter: none;
+}
+.btn.secondary:hover { background: rgba(255, 255, 255, .09); }
+.btn.primary { background: linear-gradient(180deg, #4A87EC, #2E63C4); }
+.mini { font-size: 12px; padding: 5px 10px; min-height: 32px; position: relative; }
 /* 行内小按钮视觉保持紧凑，用伪元素把命中区扩到 ≥44px 高（触控裁决） */
 .mini::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 44px; }
 .mini.ghost, .btn.ghost { background: transparent; color: var(--accent-strong); border-color: transparent; }
 .mini.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
-button.link, .link { background: none; border: none; color: var(--primary); padding: 0; min-height: 0; cursor: pointer; font: inherit; }
+button.link, .link { background: none; border: none; color: var(--primary-strong); padding: 0; min-height: 0; cursor: pointer; font: inherit; }
 button:disabled { opacity: .45; cursor: not-allowed; }
 .btn:focus-visible, button:focus-visible, .seg-item:focus-visible, .nav-link:focus-visible,
 a:focus-visible, summary:focus-visible {
@@ -117,9 +129,14 @@ a:focus-visible, summary:focus-visible {
 input, select, textarea {
   font: inherit; padding: 7px 10px; min-height: 40px;
   border: 1px solid var(--line-strong); border-radius: var(--r-control);
-  background: var(--surface); color: var(--text);
+  background: rgba(255, 255, 255, .04); color: var(--text);
 }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: var(--focus-ring); }
+input::placeholder, textarea::placeholder { color: var(--text-3); }
+input:focus, select:focus, textarea:focus {
+  outline: none; border-color: var(--primary-strong);
+  box-shadow: var(--focus-ring); background: rgba(255, 255, 255, .06);
+}
+select option { background: #0D1728; color: var(--text); }
 
 .filters { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }
 .filters label, .card label { display: block; font-size: 12px; color: var(--text-2); }
@@ -128,22 +145,31 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .card label input, .card label select, .card label textarea { display: block; width: 100%; margin-top: 4px; }
 
 .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r-control); overflow: hidden; }
-.seg-item { padding: 7px 12px; font-size: 13px; color: var(--text-2); background: var(--surface); }
+.seg-item { padding: 7px 12px; font-size: 13px; color: var(--text-2); background: rgba(255, 255, 255, .03); }
 .seg-item + .seg-item { border-left: 1px solid var(--line); }
 .seg-item.is-active { background: var(--primary-soft); color: var(--primary-strong); }
-.seg-item:hover { text-decoration: none; background: var(--surface-2); }
+.seg-item:hover { text-decoration: none; background: rgba(255, 255, 255, .07); }
 
-.chart { width: 100%; height: auto; display: block; margin: 4px 0 6px; }
-.chart .grid { stroke: var(--line); stroke-width: .5; }
+/* ---------------- 图表 ---------------- */
+.chart { width: 100%; height: auto; display: block; margin: 4px 0 6px; overflow: visible; }
+.chart .grid { stroke: var(--line); stroke-width: .6; }
 .chart .axis { fill: var(--text-3); font-size: 11px; font-family: var(--font); }
-.chart .series { fill: none; stroke: var(--primary); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.chart .dot { fill: var(--primary); }
+.chart .series {
+  fill: none; stroke: var(--mod, var(--primary-strong)); stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.chart .dot { fill: var(--mod, var(--primary-strong)); }
 .chart .dot-missing { fill: var(--surface); stroke: var(--line-strong); stroke-width: .8; }
-.chart .bar { fill: var(--primary); }
-.chart .bar.missing { fill: var(--surface); stroke: var(--line-strong); stroke-dasharray: 2 2; }
+.chart .bar { fill: var(--mod, var(--primary)); opacity: .9; }
+.chart .bar.missing { fill: none; stroke: var(--line-strong); stroke-dasharray: 2 2; opacity: 1; }
 .chart .target { stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 4 4; }
 .chart .band-area { fill: var(--accent-soft); }
 .chart .band-edge { fill: none; stroke: var(--accent); stroke-width: 1.4; }
+
+/* 迷你趋势线：只画走势，不画坐标轴（星环趋势面板一行一个指标） */
+.spark { width: 100%; height: 38px; display: block; overflow: visible; }
+.spark .line { fill: none; stroke: var(--mod, var(--accent)); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.spark .point { fill: var(--mod, var(--accent)); }
 
 .note { color: var(--text-3); font-size: 12px; margin: 4px 0 0; }
 .legend { color: var(--text-3); font-size: 12px; margin-top: 8px; }
@@ -156,6 +182,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 /* 提醒页：主列 + 常驻说明卡（桌面右侧 / 平板底部，T04 §4.6） */
 .alerts-layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
 .alerts-main { min-width: 0; }
+.alert-info { background: linear-gradient(180deg, rgba(17, 28, 45, .86), rgba(10, 19, 33, .86)); }
 .alert-info h2 { font-size: 14px; margin: 0 0 8px; }
 .alert-info p { font-size: 12px; color: var(--text-2); line-height: 1.6; margin: 0 0 8px; }
 .filter-selects { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
@@ -165,7 +192,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .step-bar { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0 0 16px; padding: 0; }
 .step { font-size: 13px; color: var(--text-3); }
 .step.is-current { color: var(--primary-strong); font-weight: 500; }
-.step.is-current span { border-bottom: 2px solid var(--primary); padding-bottom: 2px; }
+.step.is-current span { border-bottom: 2px solid var(--primary-strong); padding-bottom: 2px; }
 .step.is-done { color: var(--accent-strong); }
 .step.is-done span::after { content: " ✓"; }
 
@@ -179,7 +206,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .stat-grid dd { margin: 2px 0 0; font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; }
 
 .stat-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-.stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 12px 16px; min-width: 104px; }
+.stat {
+  background: rgba(255, 255, 255, .035); border: 1px solid var(--line);
+  border-radius: var(--r-card); padding: 12px 16px; min-width: 104px;
+}
 .stat-num { display: block; font-size: 22px; font-weight: 500; }
 .stat-label { color: var(--text-2); font-size: 12px; }
 
@@ -195,16 +225,18 @@ dl.kv dd { margin: 0; word-break: break-all; }
 .stage { display: grid; grid-template-columns: 52px 68px 1fr 170px; gap: 10px; align-items: center; }
 .stage-label { font-size: 13px; color: var(--text-2); }
 .stage-value { font-size: 14px; font-variant-numeric: tabular-nums; }
-.stage-bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
-.stage-bar i { display: block; height: 100%; border-radius: 999px; }
+.stage-bar { height: 8px; border-radius: var(--r-pill); background: rgba(255, 255, 255, .07); overflow: hidden; }
+.stage-bar i { display: block; height: 100%; border-radius: var(--r-pill); }
 .stage-foot { font-size: 12px; color: var(--text-3); }
 
 .commit-bar {
   display: flex; gap: 16px; align-items: center; justify-content: space-between;
   position: sticky; bottom: 12px;
-  padding: 14px 20px; background: var(--surface);
-  border: 1px solid var(--line); border-radius: var(--r-card);
+  padding: 14px 20px;
+  background: rgba(13, 24, 40, .92);
+  border: 1px solid var(--line-strong); border-radius: var(--r-card);
   box-shadow: var(--shadow-2);
+  backdrop-filter: blur(10px);
 }
 
 .card-list { display: grid; gap: 12px; }
@@ -220,10 +252,10 @@ dl.kv dd { margin: 0; word-break: break-all; }
 .inline-form input { width: 84px; }
 
 .report-text { font-size: 15px; line-height: 1.9; margin: 0; }
-details summary { cursor: pointer; color: var(--primary); }
+details summary { cursor: pointer; color: var(--primary-strong); }
 
 .mode-switch { display: flex; gap: 10px; flex-wrap: wrap; }
-.mode-option { background: var(--surface); color: var(--text-2); border-color: var(--line-strong); }
+.mode-option { background: rgba(255, 255, 255, .04); color: var(--text-2); border-color: var(--line-strong); }
 .mode-option.selected { background: var(--primary-soft); color: var(--primary-strong); border-color: var(--primary); }
 
 /* 一组并列的提交按钮（如"保存"+"测试连接"）。窄屏自动换行，不挤成一条。 */
@@ -234,9 +266,27 @@ details summary { cursor: pointer; color: var(--primary); }
 .card > details ul { margin: 6px 0 0; padding-left: 18px; }
 .card > details li { margin-bottom: 4px; }
 
+/* 待确认批次：一键确认（范围 = 一个导入文件，不是"所有 pending"） */
+.batch-confirm { border-left: 3px solid var(--warn); }
+.batch-confirm .card-head { align-items: baseline; }
+.batch-list { list-style: none; margin: 0 0 8px; padding: 0; }
+.batch-list li {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.batch-list li:first-child { border-top: none; }
+.batch-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.batch-meta b { font-weight: 500; word-break: break-all; }
+.batch-list form { margin: 0; }
+
 .link-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.link-grid a { padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-control); text-align: center; }
-.link-grid a:hover { background: var(--surface-2); text-decoration: none; }
+.link-grid a {
+  padding: 9px 10px; border: 1px solid var(--line); border-radius: var(--r-control);
+  text-align: center; color: var(--text-2); font-size: 13px;
+  transition: background .16s ease, color .16s ease, border-color .16s ease;
+}
+.link-grid a:hover { background: rgba(255, 255, 255, .06); color: var(--text); text-decoration: none; border-color: var(--line-strong); }
 
 @media (max-width: 1279px) {
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -266,7 +316,7 @@ details summary { cursor: pointer; color: var(--primary); }
 .guidance-card { border-left: 4px solid var(--primary); }
 .guidance-card.cat-rest { border-left-color: var(--warn); }
 .guidance-card.cat-light_activity { border-left-color: var(--accent); }
-.guidance-card.cat-regular_training { border-left-color: var(--primary); }
+.guidance-card.cat-regular_training { border-left-color: var(--primary-strong); }
 .guidance-card.cat-insufficient_data { border-left-color: var(--line-strong); }
 
 .guidance-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
@@ -276,13 +326,13 @@ details summary { cursor: pointer; color: var(--primary); }
 .eyebrow { margin: 0 0 4px; font-size: 12px; color: var(--text-3); letter-spacing: .02em; }
 
 .guidance-badge {
-  flex: none; padding: 4px 10px; border-radius: 999px;
-  background: var(--primary-soft); color: var(--primary);
+  flex: none; padding: 4px 10px; border-radius: var(--r-pill);
+  background: var(--primary-soft); color: var(--primary-strong);
   font-size: 12px; white-space: nowrap;
 }
 .cat-rest .guidance-badge { background: var(--warn-soft); color: var(--warn); }
 .cat-light_activity .guidance-badge { background: var(--accent-soft); color: var(--accent-strong); }
-.cat-insufficient_data .guidance-badge { background: var(--surface-2); color: var(--text-2); }
+.cat-insufficient_data .guidance-badge { background: rgba(255, 255, 255, .06); color: var(--text-2); }
 
 .guidance-facts { list-style: none; margin: 14px 0 0; padding: 0; }
 .guidance-facts li {
@@ -343,9 +393,9 @@ details summary { cursor: pointer; color: var(--primary); }
   align-items: center;
   min-height: 42px;
   padding: 8px 14px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--line-strong);
-  background: var(--surface);
+  background: rgba(255, 255, 255, .04);
   color: var(--text);
   font-size: 14px;
   line-height: 1.3;
@@ -397,17 +447,18 @@ textarea[name="question"] {
   border-radius: 14px;
   border: 1px solid var(--line);
   line-height: 1.75;
+  background: rgba(255, 255, 255, .03);
 }
 .bubble p { margin: 0; }
 .bubble-user {
   align-self: flex-end;
   background: var(--primary-soft);
-  border-color: transparent;
+  border-color: rgba(99, 160, 255, .24);
   border-bottom-right-radius: 4px;
 }
 .bubble-ai {
   align-self: flex-start;
-  background: var(--surface);
+  background: rgba(255, 255, 255, .035);
   border-bottom-left-radius: 4px;
 }
 .bubble-ai .chips { margin-top: 10px; }
@@ -417,7 +468,7 @@ textarea[name="question"] {
   padding: 12px;
   border: 1px dashed var(--line-strong);
   border-radius: 10px;
-  background: var(--bg);
+  background: rgba(255, 255, 255, .02);
 }
 .chat-card-head {
   display: flex;
@@ -439,7 +490,7 @@ textarea[name="question"] {
 .chat-dot {
   font-size: 12px;
   color: var(--text-2);
-  background: var(--surface);
+  background: rgba(255, 255, 255, .04);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 2px 6px;

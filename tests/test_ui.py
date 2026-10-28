@@ -98,9 +98,17 @@ def test_csrf_is_enforced_when_password_set(tmp_path):
 # ---------------- 页面与动作 ----------------
 
 def test_dashboard_shows_counts(client):
+    # 默认首页是星环；"记录总数"这类明细在详细列表模式里
+    client.post("/settings/mode", data={"mode": "simple", "next_path": "/"}, follow_redirects=False)
     body = client.get("/").text
     assert "记录总数" in body
     assert "待确认" in body
+
+
+def test_ring_home_shows_status_strip(client):
+    body = client.get("/").text
+    assert "待确认" in body
+    assert "数据截至" in body
 
 
 def test_records_page_lists_record(tmp_path):

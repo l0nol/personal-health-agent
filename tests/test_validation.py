@@ -216,3 +216,22 @@ def test_parse_record_date_accepts_common_forms(raw, expected):
 def test_parse_record_date_rejects_ambiguous_input(raw):
     with pytest.raises(ValueError):
         parse_record_date(raw)
+
+
+# ---------------- 备注列的两种列名 ----------------
+
+def test_note_and_notes_columns_both_map_to_notes():
+    """手工 CSV 一直写 `note`，模型字段叫 `notes`——两个都要收，否则来源说明会被静默丢弃。"""
+    legacy = validate_row(row(note="睡眠-日详情：夜间睡眠 7 小时 0 分钟"))
+    assert legacy.accepted
+    assert legacy.record.notes == "睡眠-日详情：夜间睡眠 7 小时 0 分钟"
+
+    current = validate_row(row(notes="夜间睡眠 7 小时 0 分钟"))
+    assert current.accepted
+    assert current.record.notes == "夜间睡眠 7 小时 0 分钟"
+
+
+def test_no_note_column_leaves_notes_empty():
+    result = validate_row(row())
+    assert result.accepted
+    assert result.record.notes is None

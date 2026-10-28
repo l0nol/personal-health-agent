@@ -2,36 +2,66 @@
    tokens.css — 设计 token（换肤第一入口）
    只放变量：颜色、字号、圆角、阴影、布局尺寸。
    改这里的值即可整体换肤；不要在别处硬编码颜色。
+
+   2026-10-25 起为深色「星环」体系：
+   - 底色是深海蓝偏近黑的藏蓝，不是纯黑——纯黑会让玻璃质感失效；
+   - 强调色分工固定：蓝=主色/睡眠，青=运动，紫=报告，青蓝=恢复/趋势；
+   - 光效靠"低透明度大范围"叠出来，不靠高饱和大面积铺色。
+   模块色只表示"这是哪个模块"，不是健康评分，也不要用红绿表意。
    ============================================================ */
 
 :root {
-  --bg: #F4F7F9;
-  --surface: #FFFFFF;
-  --surface-2: #EDF2F6;
-  --line: #DCE5EB;
-  --line-strong: #C3D2DC;
+  /* ---- 底色与层次 ---- */
+  --bg: #060B14;
+  --bg-deep: #03060C;
+  --surface: #0B1524;
+  --surface-2: #101C2E;
+  --surface-3: #17253A;
+  --line: rgba(126, 162, 200, .15);
+  --line-strong: rgba(126, 162, 200, .28);
 
-  --text: #0E1F2A;
-  --text-2: #4C6473;
-  --text-3: #7C93A1;
+  /* ---- 文本 ---- */
+  --text: #E7EFF9;
+  --text-2: #9CAFC6;
+  --text-3: #6A7E95;
 
-  --primary: #0F3D5C;
-  --primary-strong: #0A2C44;
-  --primary-soft: #E3EEF6;
-  --accent: #0E8C7F;
-  --accent-strong: #0A6E63;
-  --accent-soft: #E0F2EF;
-  --warn: #A9660A;
-  --warn-soft: #FBF0DC;
-  --danger: #A32D2D;
-  --danger-soft: #FBEAEA;
+  /* ---- 主色 / 辅助色 / 语义色 ---- */
+  --primary: #3F7FE8;
+  --primary-strong: #63A0FF;
+  --primary-soft: rgba(63, 127, 232, .16);
+  --accent: #2DD4BF;
+  --accent-strong: #6BE9D6;
+  --accent-soft: rgba(45, 212, 191, .13);
+  --warn: #E0A34A;
+  --warn-soft: rgba(224, 163, 74, .13);
+  --danger: #EC766D;
+  --danger-soft: rgba(236, 118, 109, .13);
 
-  --r-card: 12px;
-  --r-control: 8px;
-  --shadow-1: 0 1px 2px rgba(14, 31, 42, .06);
-  --shadow-2: 0 8px 24px rgba(14, 31, 42, .10);
-  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--primary);
-  --sidebar-w: 240px;
+  /* ---- 玻璃与光 ---- */
+  --glass: rgba(12, 22, 38, .66);
+  --glass-soft: rgba(12, 22, 38, .42);
+  --glass-line: rgba(150, 190, 232, .13);
+  --halo: rgba(96, 160, 255, .28);
+
+  /* ---- 星环模块强调色（tokens 只定义值，怎么用归 pages.css） ---- */
+  --c-sleep: #6E8CFF;
+  --c-recovery: #4FC3F7;
+  --c-training: #2DD4BF;
+  --c-reports: #A78BFA;
+  --c-assistant: #7DD3FC;
+  --c-trends: #38BDF8;
+
+  /* ---- 形状与阴影 ---- */
+  --r-card: 14px;
+  --r-control: 9px;
+  --r-pill: 999px;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-2: 0 18px 48px rgba(2, 6, 14, .58);
+  --shadow-glow: 0 0 0 1px rgba(120, 170, 235, .16), 0 20px 60px rgba(3, 8, 18, .6);
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--primary-strong);
+
+  /* ---- 布局 ---- */
+  --sidebar-w: 236px;
   --font: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-num: "Cascadia Mono", Consolas, ui-monospace, monospace;
 }
-

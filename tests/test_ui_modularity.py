@@ -17,7 +17,14 @@ from fastapi.testclient import TestClient
 from conftest import read_css
 from health_agent.config import load_settings
 from health_agent.ui.app import create_app
-from health_agent.ui.pages import DIAL_PAGES, NAV_GROUPS, PAGES, link_grid_pages, nav_groups, page_by_key
+from health_agent.ui.pages import (
+    NAV_GROUPS,
+    PAGES,
+    RING_MODULES,
+    link_grid_pages,
+    nav_groups,
+    page_by_key,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = ROOT / "src" / "health_agent" / "ui" / "templates"
@@ -38,9 +45,12 @@ def test_registry_has_unique_keys_and_hrefs():
     assert set(p.group for p in PAGES) <= set(NAV_GROUPS)
 
 
-def test_dial_pages_are_six_and_indexed_0_to_5():
-    assert len(DIAL_PAGES) == 6
-    assert [p.dial_idx for p in DIAL_PAGES] == list(range(6))
+def test_ring_modules_are_six_and_indexed_0_to_5():
+    assert len(RING_MODULES) == 6
+    assert [m.idx for m in RING_MODULES] == list(range(6))
+    # 模块 key 唯一、详情地址不重复（重复说明有两个模块指向同一个落点）
+    assert len({m.key for m in RING_MODULES}) == 6
+    assert len({m.href for m in RING_MODULES}) == 6
 
 
 def test_link_grid_excludes_chronos_itself():
@@ -92,15 +102,16 @@ def test_rendered_nav_contains_every_page_label(tmp_path):
         assert page.label in body, page.label
 
 
-def test_dial_sectors_match_registry(tmp_path):
-    """刻度清单与 pages.py 一致（T11 后标签类名改为 dial-fbtn，断言同步）。"""
+def test_ring_nodes_match_registry(tmp_path):
+    """环上模块清单与 pages.py 一致：六个节点、六张面板、六个中心卡。"""
     with _client(tmp_path) as client:
         body = client.get("/chronos").text
-    for page in DIAL_PAGES:
-        assert f'id="sector-{page.key}"' in body
-        assert f'<label class="dial-fbtn" for="sector-{page.key}"' in body
-        assert f'href="{page.href}"' in body
-        assert page.dial_label in body
+    for module in RING_MODULES:
+        assert f'id="sector-{module.key}"' in body
+        assert f'<label class="ring-node mod-{module.key}" for="sector-{module.key}"' in body
+        # 模板会对查询串里的 & 做 HTML 转义，两种写法都要认
+        assert f'href="{module.href}"' in body or f'href="{module.href.replace("&", "&amp;")}"' in body
+        assert module.label in body
 
 
 # ---------------- 样式分层 ----------------

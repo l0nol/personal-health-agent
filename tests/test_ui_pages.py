@@ -110,35 +110,36 @@ def test_trends_page_unknown_metric_falls_back(tmp_path):
 
 
 def test_chronos_page_structure(tmp_path):
-    """T11：六刻度单选拨盘 + 中心预览/助手 + 普通入口；刻度本身不再直接跳转。"""
+    """星环：六模块单选 + 中心状态核心 + 六张面板 + 普通入口；模块本身不跳转。"""
     with _client(tmp_path) as client:
         body = client.get("/chronos").text
 
-    assert "表盘导航" in body
+    assert "星环导航" in body
     assert "普通入口" in body
-    assert body.count('class="dial-fbtn"') == 6
-    # 6 个刻度 + 闲置 + 助手
-    assert body.count('class="sector-input"') == 8
-    assert body.count('class="core-enter"') == 6
-    assert body.count('class="core-card"') == 6
-    assert 'class="dial-orb"' in body  # 闲置态助手球
+    assert body.count('class="ring-node') == 6
+    # 6 个模块 + 闲置
+    assert body.count('class="ring-input"') == 7
+    assert body.count('class="core-card') == 7
+    assert body.count('class="panel ') == 7
+    assert 'class="orbit"' in body
 
 
 def test_mode_switch_persists_and_changes_home(tmp_path):
+    """默认首页是星环；切到详细列表再切回来，偏好要真的落库。"""
     with _client(tmp_path) as client:
-        assert "今日摘要" in client.get("/").text
+        assert "星环导航" in client.get("/").text
 
-        switch = client.post("/settings/mode", data={"mode": "chronos", "next_path": "/"},
+        switch = client.post("/settings/mode", data={"mode": "simple", "next_path": "/"},
                              follow_redirects=False)
         assert switch.status_code == 303
 
-        home = client.get("/").text
-        assert "表盘导航" in home
-        assert "今日摘要" not in home
+        detail = client.get("/").text
+        assert "今日摘要" in detail
+        assert "星环导航" not in detail
 
-        client.post("/settings/mode", data={"mode": "simple", "next_path": "/"},
+        client.post("/settings/mode", data={"mode": "chronos", "next_path": "/"},
                     follow_redirects=False)
-        assert "今日摘要" in client.get("/").text
+        assert "星环导航" in client.get("/").text
 
 
 def test_mode_switch_rejects_unknown_value(tmp_path):
@@ -153,7 +154,8 @@ def test_settings_page_has_mode_section(tmp_path):
         body = client.get("/settings").text
 
     assert "外观" in body
-    assert "时钟模式" in body
+    assert "星环视图" in body
+    assert "详细列表" in body
 
 
 def test_sidebar_groups_present_on_all_pages(tmp_path):
@@ -169,3 +171,14 @@ def test_new_pages_are_read_only(tmp_path):
     with _client(tmp_path) as client:
         for path in ("/sleep", "/trends", "/chronos"):
             assert client.post(path, data={}).status_code == 405, path
+
+
+def test_trends_dropdown_lists_every_tier(tmp_path):
+    """P2 指标（体重、单次心率等）也必须在指标下拉里，否则会出现"图是体重、下拉写着睡眠"。"""
+    with _client(tmp_path) as client:
+        body = client.get("/trends?metric=weight_kg").text
+
+    assert 'value="weight_kg" selected' in body
+    assert "体重" in body
+    for tier in ("P0", "P1", "P2"):
+        assert f'<optgroup label="{tier}"' in body, tier

@@ -9,7 +9,7 @@ from __future__ import annotations
 import hmac
 import json
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
@@ -61,15 +61,18 @@ from ..training import service as training_service
 from ..training.errors import TrainingValidationError
 from ..training.models import ACTIVITY_LABELS, ACTIVITY_TYPES, COMPLETION_LABELS
 from .auth import SESSION_COOKIE, SessionSigner, load_secret, verify_password
-from .charts import BandPoint, SeriesPoint, build_band, build_bars, build_line
+from .charts import BandPoint, build_band, build_bars, build_line
 from .context import (
+    PAGE_HREFS,
     assistant_shortcuts,
-    chronos_sectors,
     dashboard_tiles,
+    day_series,
     metric_labels,
+    pending_batches,
     reference,
+    ring_view,
 )
-from .pages import DIAL_PAGES, link_grid_pages, nav_groups, page_by_key
+from .pages import RING_MODULES, link_grid_pages, nav_groups, page_by_key
 
 METRICS_BY_NAME = {metric.name: metric for metric in METRICS}
 
@@ -148,7 +151,9 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             conn.close()
 
     def ui_mode(conn) -> str:
-        return str(preferences.get_settings(conn).get("ui_mode") or "simple")
+        # 2026-10-25：默认改成星环视图。详细列表（index.html）仍然完整保留，
+        # 在设置页可以切回去；谁也没被删掉，只是默认第一眼更安静。
+        return str(preferences.get_settings(conn).get("ui_mode") or "chronos")
 
     def render(request: Request, name: str, **context):
         # 所有页面共享的上下文（导航清单来自 ui/pages.py，模板不再硬编码链接）
@@ -160,7 +165,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
         context.setdefault("show_logout", settings.password_hash is not None)
         context.setdefault("nav_groups", nav_groups())
         context.setdefault("link_pages", link_grid_pages())
-        context.setdefault("dial_pages", DIAL_PAGES)
+        context.setdefault("ring_modules", RING_MODULES)
         return templates.TemplateResponse(request, name, context)
 
     def go(url: str) -> RedirectResponse:
@@ -239,8 +244,88 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
 
     # ---------------- 概览 ----------------
 
+    def _pending_summary(conn) -> dict:
+        """待确认记录按批次汇总：给"一键确认"用。
+
+        `loose` 是没有批次的手工记录——它们没法按批次确认，只能逐条处理，
+        所以单独计数，绝不混进"一键"里。
+        """
+        batches = pending_batches(conn)
+        return {
+            "total": sum(batch.pending for batch in batches),
+            "batches": [b for b in batches if b.batch_id],
+            "loose": sum(batch.pending for batch in batches if not batch.batch_id),
+        }
+
+    def _ring_context(request: Request, conn, *, selected: str = "") -> dict:
+        """星环首页（`/` 与 `/chronos` 共用）的上下文。
+
+        两个地址共用同一个装配函数：首页与「星环首页」不能长出两套数字。
+        """
+        end = latest_data_date(conn) or date.today()
+        today = date.today()
+        tiles = dashboard_tiles(conn, end)
+        counts = {
+            "total": repository.count_records(conn),
+            "pending": repository.count_records(conn, status="pending"),
+            "confirmed": repository.count_records(conn, status="confirmed"),
+            "rejected": repository.count_records(conn, status="rejected"),
+        }
+        conflicts = conn.execute(
+            "SELECT COUNT(*) AS n FROM conflicts WHERE resolution = 'pending'"
+        ).fetchone()["n"]
+        unread = alert_store.count_unread(conn)
+        guidance = build_guidance(
+            conn, for_date=today, config=guidance_config_from_settings(settings)
+        )
+        ring = ring_view(
+            conn,
+            guidance=guidance,
+            tiles=tiles,
+            counts=counts,
+            conflicts=conflicts,
+            unread=unread,
+            end=end,
+            today=today,
+            target_minutes=config_from_settings(settings).sleep_target_minutes,
+            ai_enabled=settings.ai_enabled,
+            ai_model=settings.ai_model or "",
+            hrefs=_ASSISTANT_HREFS,
+        )
+        valid = {module.key for module in RING_MODULES}
+        # 时间相关的问候只在展示层算，不参与任何健康判断
+        now = datetime.now()
+        greeting = (
+            "早上好" if now.hour < 11
+            else ("中午好" if now.hour < 13 else ("下午好" if now.hour < 18 else "晚上好"))
+        )
+        weekday = "一二三四五六日"[today.weekday()]
+        return {
+            "mode": "chronos",
+            "ring": ring,
+            "guidance": guidance,
+            "tiles": tiles,
+            "counts": counts,
+            "conflicts": conflicts,
+            "unread_alerts": unread,
+            "end_day": end.isoformat(),
+            "today": today.isoformat(),
+            "today_label": f"{today.isoformat()} · 周{weekday}",
+            "week_no": today.isocalendar().week,
+            "greeting": greeting,
+            "selected": selected if selected in valid else "",
+            "shortcuts": assistant_shortcuts(guidance, _ASSISTANT_HREFS),
+            "activity_types": ACTIVITY_TYPES,
+            "activity_labels": ACTIVITY_LABELS,
+            "hrefs": PAGE_HREFS,
+            "pending": _pending_summary(conn),
+        }
+
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request, conn=Depends(get_db)):
+        if ui_mode(conn) == "chronos":
+            return render(request, "chronos.html", **_ring_context(request, conn))
+
         counts = {
             "total": repository.count_records(conn),
             "pending": repository.count_records(conn, status="pending"),
@@ -251,36 +336,15 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             "SELECT COUNT(*) AS n FROM records WHERE quality_flags != '[]' AND verification_status != 'superseded'"
         ).fetchone()["n"]
         conflicts = conn.execute(
-            "SELECT COUNT(*) AS n FROM conflicts WHERE resolution = 'pending'"
+            "SELECT COUNT(*) n FROM conflicts WHERE resolution = 'pending'"
         ).fetchone()["n"]
         unread_alerts = alert_store.count_unread(conn)
-        mode = ui_mode(conn)
         end = latest_data_date(conn) or date.today()
         start = end - timedelta(days=6)
         config = config_from_settings(settings)
         tiles = dashboard_tiles(conn, end)
-        sleep_chart = build_bars(_series(conn, "night_sleep_minutes", start, end),
+        sleep_chart = build_bars(day_series(conn, "night_sleep_minutes", start, end),
                                  target=float(config.sleep_target_minutes), height=150)
-        if mode == "chronos":
-            # 与 /chronos 路由同一套上下文（tiles/sectors 同源），否则表盘会空转
-            home_guidance = build_guidance(
-                conn, for_date=date.today(), config=guidance_config_from_settings(settings)
-            )
-            return render(
-                request,
-                "chronos.html",
-                mode=mode,
-                counts=counts,
-                conflicts=conflicts,
-                unread_alerts=unread_alerts,
-                tiles=tiles,
-                sectors=chronos_sectors(
-                    conn, tiles, counts, conflicts, unread_alerts, end, guidance=home_guidance
-                ),
-                shortcuts=assistant_shortcuts(home_guidance, _ASSISTANT_HREFS),
-                selected="",
-                end_day=end.isoformat(),
-            )
         recent = _items(repository.list_records(conn, limit=10))
         batches = conn.execute(
             "SELECT * FROM import_batches ORDER BY imported_at DESC LIMIT 5"
@@ -298,7 +362,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             recent=recent,
             batches=batches,
             unread_alerts=unread_alerts,
-            mode=mode,
+            mode="simple",
             tiles=tiles,
             sleep_chart=sleep_chart,
             target_text=describe_sleep_target(config),
@@ -335,6 +399,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             status=status,
             limit=limit,
             total=repository.count_records(conn),
+            pending=_pending_summary(conn),
         )
 
     @app.post("/records/{record_id}/confirm")
@@ -458,10 +523,20 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
         return go("/imports?msg=" + quote(result.summary()))
 
     @app.post("/imports/{batch_id}/confirm")
-    def imports_confirm(batch_id: str, request: Request, conn=Depends(get_db)):
+    def imports_confirm(
+        batch_id: str,
+        request: Request,
+        next_path: str = Form(""),
+        conn=Depends(get_db),
+    ):
+        # 只允许回到站内相对路径：避免被拼成跳外站的开放重定向
+        back = next_path if next_path.startswith("/") and not next_path.startswith("//") else "/imports"
         result = lifecycle.confirm_batch(conn, batch_id)
+        sep = "&" if "?" in back else "?"
         return go(
-            "/imports?msg="
+            back
+            + sep
+            + "msg="
             + quote(f"已确认 {result['confirmed']} 条，跳过 {result['skipped']} 条（无值或冲突）")
         )
 
@@ -678,25 +753,10 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
         chat_store.clear(conn)
         return go("/assistant?msg=" + quote("已清空对话（历史记录只在本机数据库里）"))
 
-    # ---------------- 睡眠分析 / 指标趋势 / 时钟模式（只读） ----------------
+    # ---------------- 睡眠分析 / 指标趋势 / 星环首页（只读） ----------------
 
-    def _series(conn, metric: str, start: date, end: date):
-        """把某指标的日序列补成"整段日期轴"，缺失填 None。
-
-        缺失必须是 None 而不是跳过：跳过会把两段不连续的数据连成一条线。
-        """
-        by_date = {p.record_date: p for p in load_points(conn, metric, start, end)}
-        series = []
-        for day in range_days(start, end):
-            point = by_date.get(day.isoformat())
-            series.append(
-                SeriesPoint(
-                    label=day.strftime("%m-%d"),
-                    value=point.value if point else None,
-                    record_id=point.record_id if point else None,
-                )
-            )
-        return series
+    # 日期轴补全的实现在 context.day_series：星环与这几个页面必须用同一份补洞逻辑
+    _series = day_series
 
     RANGE_PAIRS = {
         "hrv_min_ms": "hrv_max_ms",
@@ -790,8 +850,13 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
             chart = build_bars(series) if spec.kind in {"count", "score"} else build_line(series)
 
         summary = summarize(conn, spec, start, end)
-        groups = [("P0", [m for m in METRICS if m.tier == "P0"]),
-                  ("P1", [m for m in METRICS if m.tier == "P1"])]
+        # 分组按目录里实际存在的层级生成：写死 P0/P1 会让 P2 的指标（体重、
+        # 单次心率/血氧、心律筛查…）在指标选择里消失——但 URL 仍能打开，
+        # 于是下拉框显示成第一个指标、图表却是另一个，看着像串了页。
+        groups = [
+            (tier, [m for m in METRICS if m.tier == tier])
+            for tier in sorted({m.tier for m in METRICS})
+        ]
         return render(
             request,
             "trends.html",
@@ -915,36 +980,7 @@ def create_app(settings: Settings | None = None, *, db_path: Path | None = None)
 
     @app.get("/chronos", response_class=HTMLResponse)
     def chronos(request: Request, conn=Depends(get_db), s: str = ""):
-        end = latest_data_date(conn) or date.today()
-        tiles = dashboard_tiles(conn, end)
-        counts = {
-            "total": repository.count_records(conn),
-            "pending": repository.count_records(conn, status="pending"),
-            "confirmed": repository.count_records(conn, status="confirmed"),
-        }
-        conflicts = conn.execute(
-            "SELECT COUNT(*) AS n FROM conflicts WHERE resolution = 'pending'"
-        ).fetchone()["n"]
-        unread = alert_store.count_unread(conn)
-        dial_guidance = build_guidance(
-            conn, for_date=date.today(), config=guidance_config_from_settings(settings)
-        )
-        valid = {page.key for page in DIAL_PAGES}
-        return render(
-            request,
-            "chronos.html",
-            mode=ui_mode(conn),
-            tiles=tiles,
-            sectors=chronos_sectors(
-                conn, tiles, counts, conflicts, unread, end, guidance=dial_guidance
-            ),
-            shortcuts=assistant_shortcuts(dial_guidance, _ASSISTANT_HREFS),
-            selected=s if s in valid else "",
-            counts=counts,
-            conflicts=conflicts,
-            unread_alerts=unread,
-            end_day=end.isoformat(),
-        )
+        return render(request, "chronos.html", **_ring_context(request, conn, selected=s))
 
     @app.post("/settings/mode")
     def settings_mode(

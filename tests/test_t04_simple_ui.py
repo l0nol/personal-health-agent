@@ -32,6 +32,26 @@ def _client(tmp_path) -> TestClient:
     return TestClient(create_app(load_settings({}, project_root=tmp_path), db_path=tmp_path / "ui.db"))
 
 
+def _home_in_detail_mode(client) -> str:
+    """首页现在默认是星环；参照范围行是"详细列表"里的组件，先切过去再看。
+
+    这不是放宽断言：参照范围行的四态、算法与文案一个字都没改，
+    只是它所在的那一页不再是默认首页。
+    """
+    client.post("/settings/mode", data={"mode": "simple", "next_path": "/"}, follow_redirects=False)
+    return client.get("/").text
+
+
+def _home_in_detail_mode(client) -> str:
+    """首页现在默认是星环；参照范围行是"详细列表"里的组件，先切过去再看。
+
+    这不是放宽断言：参照范围行的四态、算法与文案一个字都没改，
+    只是它所在的那一页不再是默认首页。
+    """
+    client.post("/settings/mode", data={"mode": "simple", "next_path": "/"}, follow_redirects=False)
+    return client.get("/").text
+
+
 def _seed_sleep(tmp_path, values: list[float]) -> None:
     """按给定顺序灌入已确认的夜间睡眠记录（列表第 0 个是今天）。"""
     conn = init_db(tmp_path / "ui.db")
@@ -55,7 +75,7 @@ def test_reference_row_active_shows_personal_baseline_and_how(tmp_path):
     # 取值 398–402 循环：MAD 不为 0，走 median_mad 主路径
     _seed_sleep(tmp_path, [400 + (i % 5) - 2 for i in range(15)])
     with _client(tmp_path) as client:
-        body = client.get("/").text
+        body = _home_in_detail_mode(client)
 
     assert "个人基线" in body
     assert "参照" in body
@@ -72,7 +92,7 @@ def test_reference_row_iqr_fallback_is_disclosed(tmp_path):
     """MAD 退化为 0（过半取值相同）时走 IQR 兜底，且必须如实写明方法（ERR-009）。"""
     _seed_sleep(tmp_path, [400] * 8 + [390] * 7)
     with _client(tmp_path) as client:
-        body = client.get("/").text
+        body = _home_in_detail_mode(client)
 
     assert "个人基线" in body
     assert "2.5×IQR/1.349" in body
@@ -84,7 +104,7 @@ def test_reference_row_insufficient_states_reason(tmp_path):
     """5 天样本 < 14 天 → 明说数据不足与原因，不显示任何区间。"""
     _seed_sleep(tmp_path, [400, 405, 395, 402, 398])
     with _client(tmp_path) as client:
-        body = client.get("/").text
+        body = _home_in_detail_mode(client)
 
     assert "数据不足" in body
     assert "有效记录 5/14 天，样本不足" in body
@@ -94,7 +114,7 @@ def test_reference_row_insufficient_states_reason(tmp_path):
 def test_reference_row_no_data_says_so(tmp_path):
     """从未记录 → "暂无数据"，不造区间。"""
     with _client(tmp_path) as client:
-        body = client.get("/").text
+        body = _home_in_detail_mode(client)
 
     assert "暂无数据" in body
     assert "个人基线" not in body
@@ -127,7 +147,7 @@ def test_deviation_marker_is_neutral_text(tmp_path):
     values = [300] + [400 if i % 2 else 390 for i in range(14)]
     _seed_sleep(tmp_path, values)
     with _client(tmp_path) as client:
-        body = client.get("/").text
+        body = _home_in_detail_mode(client)
 
     assert 'class="ref-dev"' in body
     assert "偏离基线" in body

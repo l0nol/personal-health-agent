@@ -20,7 +20,9 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from ..analytics.aggregate import summarize_many
+from ..guidance.engine import build_guidance, config_from_settings
 from ..reports.builder import latest_data_date
+from ..storage import training as training_store
 from ..storage.repository import now_iso
 from .base import LLMClient, LLMError
 from .http_client import ChatCompletionClient
@@ -63,10 +65,17 @@ SYSTEM_PROMPT = """你是一个个人健康数据的解读助手。用户会给�
 1. 只能使用摘要与历史对话里出现过的数字，禁止自己计算、估算、补全或引用常识区间。
 2. 禁止疾病诊断、禁止治疗或用药建议、禁止预测任何风险。用户问到这些，直接说"这超出我的能力范围，建议问医生"。
 3. 摘要里没有的项目就是"数据不足"，要如实说不足，不要猜、不要用别的指标顶替。
+3.1 被问到"今天该不该练、练什么、适不适合运动"时，**必须先看摘要里的「今日建议」**：
+    直接用它给出的类别与结论（例如"今天可以按计划训练"），再补 1–2 条它的依据；
+    只有「今日建议」的类别是 insufficient_data 时，才回答数据不足。
+    不要因为摘要里没有"训练处方"就拒答——「今日建议」就是程序给出的答案。
 4. 用户想去看页面时，直接告诉他点下面的链接（系统会自动附上），不要编造链接或路径。
+4.1 涉及训练时，可以引用摘要里的「最近训练」次数与「今日主观状态」；这些没记录就直说没记录。
 5. 语气平实，像同事帮你看数据；不夸张、不惊吓、不说教，不使用感叹号。
 6. 回答控制在 250 字以内，用短段落，不要用表格、不要用 Markdown 标题。
-7. 只输出回答正文。"""
+7. 历史对话里的旧结论可能与今天的摘要不一致（数据在更新，旧回答可能是在没数据时说的）；
+   一律以本次摘要为准，不要沿用旧回答里"数据不足/给不出"的说法。
+8. 只输出回答正文。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,8 +108,12 @@ def _round(value: float | None, unit: str) -> float | None:
     return round(value, 1)
 
 
-def build_context(conn: sqlite3.Connection, *, end: date | None = None) -> dict:
-    """给模型的最小上下文。所有数字都由本函数调用现成的统计函数算好。"""
+def build_context(conn: sqlite3.Connection, *, end: date | None = None, settings=None) -> dict:
+    """给模型的最小上下文。所有数字都由本函数调用现成的统计函数算好。
+
+    其中「今日建议」来自规则引擎（`guidance.engine`），不是模型推的。
+    没有它，问"今天该练什么"就只能得到"数据不足"——因为指标摘要里没有"该不该练"这件事。
+    """
     last = latest_data_date(conn)
     end_day = end or last or date.today()
     start = end_day - timedelta(days=6)
@@ -135,6 +148,55 @@ def build_context(conn: sqlite3.Connection, *, end: date | None = None) -> dict:
     ).fetchone()["n"]
     total = conn.execute("SELECT COUNT(*) AS n FROM records").fetchone()["n"]
 
+    # 今日建议：类别 / 结论 / 依据 / 边界，全部由规则引擎产出
+    guidance = build_guidance(
+        conn,
+        today=date.today(),
+        config=config_from_settings(settings) if settings is not None else None,
+    )
+    advice = {
+        "日期": guidance.for_date,
+        "类别": guidance.category,
+        "类别名": guidance.category_label,
+        "结论": guidance.headline,
+        "聚焦": guidance.focus,
+        "备选": list(guidance.alternatives),
+        "依据": [
+            f"{item.label}：{item.value_text}（覆盖 {item.coverage}）" for item in guidance.evidence
+        ],
+        "边界": list(guidance.limitations),
+    }
+    if guidance.uncertainty:
+        advice["不确定"] = list(guidance.uncertainty)
+
+    # 最近训练与今日主观状态：回答"练什么"必须有这两项
+    sessions = training_store.list_sessions(conn, limit=8)
+    training = {
+        "近 14 天次数": training_store.count_sessions(
+            conn, start=end_day - timedelta(days=13), end=end_day
+        ),
+        "最近几次": [
+            {
+                "日期": item.session_date,
+                "类型": item.activity_type,
+                "时长分钟": item.duration_minutes,
+            }
+            for item in sessions[:5]
+        ],
+    }
+    feedback = training_store.get_feedback(conn, end_day)
+    subjective = (
+        {
+            "日期": feedback.feedback_date,
+            "精力": feedback.energy,
+            "疲劳": feedback.fatigue,
+            "酸痛程度": feedback.soreness_level,
+            "酸痛部位": list(feedback.soreness_parts),
+        }
+        if feedback is not None
+        else "今天还没记录（用户可在训练页填精力/疲劳/酸痛）"
+    )
+
     return {
         "数据截至": end_day.isoformat(),
         "窗口": f"{start.isoformat()} ~ {end_day.isoformat()}（近 7 天）",
@@ -143,7 +205,13 @@ def build_context(conn: sqlite3.Connection, *, end: date | None = None) -> dict:
         "近 7 天指标": metrics,
         "近 7 天夜间睡眠逐日": daily_sleep,
         "数据不足的指标": gaps,
-        "说明": "以上数字全部由程序统计得出；没有列出的项目即为数据不足，不得推断。",
+        "今日建议": advice,
+        "最近训练": training,
+        "今日主观状态": subjective,
+        "说明": (
+            "以上数字与「今日建议」全部由程序与规则引擎算出；没有列出的项目即为数据不足，不得推断。"
+            "被问到今天该不该练、练什么时，以「今日建议」的类别与结论为准。"
+        ),
     }
 
 
@@ -166,6 +234,18 @@ def _context_lines(context: dict, card: dict | None = None) -> list[str]:
                 f"（约 {average // 60} 小时 {average % 60} 分），"
                 f"最短 {min(values)} 分钟，最长 {max(values)} 分钟。"
             )
+    advice = context.get("今日建议") or {}
+    if advice.get("结论"):
+        lines.append(
+            f"今日建议（{advice.get('类别名', advice.get('类别'))}）：{advice['结论']}"
+            + (f" 依据：{advice['依据'][0]}。" if advice.get("依据") else "")
+        )
+        if advice.get("边界"):
+            lines.append("边界：" + "；".join(advice["边界"][:2]) + "。")
+    recent = context.get("最近训练") or {}
+    if recent.get("近 14 天次数") is not None:
+        lines.append(f"近 14 天训练 {recent['近 14 天次数']} 次。")
+
     if context["数据不足的指标"]:
         lines.append("数据不足的指标：" + "、".join(context["数据不足的指标"]) + "。")
     if context["待确认记录"]:
@@ -241,11 +321,12 @@ def ask(
     if len(cleaned) > MAX_QUESTION_CHARS:
         cleaned = cleaned[:MAX_QUESTION_CHARS]
 
-    context = build_context(conn)
+    context = build_context(conn, settings=settings)
     card, refs = resolve(conn, cleaned)
     if card is not None:
         context["本次聚焦"] = card_prompt(card)
     local_text = "\n".join(_context_lines(context, card))
+
 
     if client is None and not settings.ai_enabled:
         return Answer(

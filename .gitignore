@@ -8,6 +8,10 @@ data/
 !.env.example
 backup/
 
+# 生成的个人图表（含体重/睡眠等真实数值，别推到公开仓库）
+reports/*-trend-*.html
+reports/*-trend-*.png
+
 # 原始截图（含个人健康信息）
 *.png
 *.jpg

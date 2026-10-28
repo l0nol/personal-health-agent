@@ -17,6 +17,72 @@
 
 ## 记录
 
+### 2026-10-26 — 华为运动健康导出包 → 导入（新数据入口）
+
+- **背景**：用户提供了 `HUAWEI_HEALTH_20261019170027.zip`（43 MB / 173 文件），
+  改变了 2026-10-19 "不走加密包"的裁决
+- **新增文件**：`scripts/parse_huawei_export.py`（清点 / 聚合 / 校验 / 出 CSV）、
+  `docs/14-huawei-export-import.md`
+- **关键实现**：
+  - 分期段**按分钟落格**去重（导出包含重复分析段，直接加时长会把一夜算成 23 小时）
+  - 同一晚只保留一个口径（库里有设备值的日期，整晚跳过导出包睡眠）
+  - 只产出"能从原始采样算出来"的指标；睡眠评分/清醒次数/连续性**不产出**
+- **校验**：与库里截图确认的 7 晚对照，5 晚完全一致；2 晚差 4~30 分钟（设备合并会话所致），
+  因此不覆盖设备值
+- **执行**：`--skip-existing` → 2053 行；预览 2052 可直接确认 + 1 待复核；`--commit` 写入批次 ae651a9d
+- **未验证**：`SportsHealth/*.xls`（步数/活动热量）未解析；心率/血氧等聚合值与 App 卡片是否一致无法对照
+- **状态**：待审核
+
+### 2026-10-25 — 一键确认（按批次）
+
+- **修改文件**：`ui/context.py`（新增 `PendingBatch` + `pending_batches()`）、`ui/app.py`
+  （`_pending_summary()`；`/imports/{id}/confirm` 支持站内 `next_path`）、
+  `ui/templates/records.html`（待确认批次卡）、`ui/templates/chronos.html`（状态条一键入口）、
+  `static/css/{components,pages}.css`、`cli.py`（`confirm` 子命令）、`README.md`
+- **新增文件**：`tests/test_t13_one_click_confirm.py`（9 条）
+- **关键取舍**：范围是**一个批次**，不是"所有 pending"——批量确认最容易把用户故意留着的
+  待确认记录一起确认掉（ERR-029）。多批时首页按钮写明"最近一批（N 条）"，另一侧给
+  "共 N 批 →" 去逐批选。
+- **执行命令**：`pytest` → 571 passed / 1 skipped；`confirm --list` 实测 5 批 66 条
+- **未验证项目**：平板真机点击
+- **状态**：待审核
+
+### 2026-10-25 — 星环首页（0.3.0）— UI 改造：中心状态核心 + 环形导航
+
+- **修改文件**：
+  - `src/health_agent/ui/pages.py`（`Page` 去掉表盘字段；新增 `RingModule` / `RING_MODULES` / `ring_angle`）
+  - `src/health_agent/ui/context.py`（删 `Sector`/`chronos_sectors`；新增 `RingNode`/`CoreState`/`Panel`/`RingView` 与 `ring_view()`、`day_series()`、`PAGE_HREFS`）
+  - `src/health_agent/ui/app.py`（`_ring_context()` 统一装配 `/` 与 `/chronos`；`ui_mode` 默认改为 `chronos`；`_series` 改为复用 `context.day_series`）
+  - `src/health_agent/ui/charts.py`（新增 `build_spark`，缺失断线、单点只画点）
+  - `src/health_agent/ui/templates/chronos.html`（重写为星环；面板正文滚动 + 操作条常驻）
+  - `src/health_agent/ui/templates/base.html`（品牌标记）、`templates/settings.html`（外观：星环视图 / 详细列表）
+  - `src/health_agent/ui/static/css/{tokens,base,components,pages}.css`（全站深色体系；星环页样式）
+  - 测试：`tests/test_t05_chronos.py`、`tests/test_t11_chronos.py`（按新结构重写断言，不是放宽）、
+    `tests/test_ui_modularity.py`、`tests/test_ui_pages.py`、`tests/test_t04_simple_ui.py`、
+    `tests/test_t10_training_ui.py`、`tests/test_ui.py`（默认首页变化后，参照范围/明细类断言改为先进详细列表模式）
+  - `docs/05-handoff.md`、`docs/06-ui-extension-guide.md`、`docs/11-chronos-dial-concept.md`（标注已被取代）、`README.md`
+  - `pyproject.toml` / `__init__.py`（版本 0.2.0 → 0.3.0，两处同步）
+- **新增文件**：
+  - `docs/13-star-ring-ui.md`（结构 / 交互 / 动效 / 空态 / 响应式 / 限制）
+  - `scripts/verify_ring_browser.js`（无头 Chrome：指针角度、面板互斥、快速连点、键盘、六档宽度无横向滚动 + 截图）
+  - `scripts/_ring_server.py`（把**副本**数据库跑起来供截图，不碰真实库）
+- **删除文件**：`scripts/verify_t05_browser.js`（它断言的是已被替换的 `.dial`/`.sector` DOM，
+  留着只会给人"还有这条验证可跑"的错觉；对应能力的替代者见上一条）
+- **执行命令**：
+  - `.venv/Scripts/python.exe -m pytest` → 560 passed / 1 skipped
+  - `NODE_PATH=… node scripts/verify_ring_browser.js --shots` → 34/34 passed
+- **测试结果**：560 通过 / 1 跳过 / 0 失败（退出码 0）；浏览器 34 通过 / 0 失败
+- **代码证据**：
+  - 首页 `/` 与 `/chronos` 共用 `_ring_context()`，不存在第二套数字
+  - 六个模块的中心数值分别来自 `summarize()` / `reference()` / `build_guidance()` / `build_daily()` / `chat_store.load()`
+  - 指针最短路径与拖拽在 `chronos.html` 的 `scripts` 块内，无脚本时 CSS `#sector-x:checked ~ .ring-stage { --deg }` 仍然生效
+  - 页面不含"健康分/健康评分/综合评分/风险等级"（测试守着）
+- **未验证项目**：真机（联想 Yoga Pad Pro / 联想浏览器）渲染与触屏拖拽手感；`dvh` 收放时的跳动
+- **剩余风险**：
+  - 深色主题是全站生效，旧页面的浅色假设（例如某些灰色描边）在个别屏幕上可能偏暗，需真机确认
+  - 面板内容超出时桌面端是内部滚动（刻意不做高度动画，避免跳动）
+- **状态**：待审核
+
 ### 2026-10-20 — T00 — 项目基线盘点
 
 - **修改文件**：无（业务代码、数据库结构、依赖、测试均未改动）

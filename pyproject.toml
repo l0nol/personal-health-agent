@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "personal-health-agent"
-version = "0.2.0"
+version = "0.3.0"
 description = "个人健康管理助手（本地优先）：导入华为运动健康截图提取结果，校验、落库、趋势与简报"
 requires-python = ">=3.11"
 dependencies = [

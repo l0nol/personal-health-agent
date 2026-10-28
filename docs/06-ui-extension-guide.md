@@ -1,172 +1,325 @@
-# UI 扩展与美化指南
+# Personal Health Agent
 
-> 给后续改界面的人（或 AI）：这份文件说明**改哪里、不用改哪里**。
-> 原则：换皮不换数、加页面不改框架、加交互先保证降级可用。
+本地优先的个人健康管理助手。把华为运动健康里能读到的健康指标（截图提取 → JSON/CSV）
+导入本地库，做校验、去重、趋势与简报。
 
----
-
-## 1. 分层地图（先看这张）
-
-```
-ui/app.py        路由：取数、鉴权、表单转发。不写样式、不拼展示字符串
-   ↓
-ui/context.py    视图模型（Tile/Reference/Sector）+ 装配函数。模板能拿到哪些字段看这里
-ui/pages.py      页面注册表：导航 / 链接网格 / 表盘扇区的唯一事实源
-   ↓
-ui/templates/    Jinja2 模板：只负责长相
-ui/static/       样式四层（见下）
-```
-
-**数据只有一份口径**：模板里的数字全部来自 `context.py` 调用的
-`summarize()` / `compute_baseline()` / 计数查询，换皮不会换数。
+**边界（写在最前面）**：只做趋势观察与一般生活习惯建议，**不做疾病诊断、不做治疗建议、
+不做体重控制**。手环数据只能辅助观察，身体不适请直接就医，不要等程序提醒。
 
 ---
 
-## 2. 样式分四层（美化从第 1 层开始）
+## 当前进度
 
-`static/app.css` 只是入口，实际规则在 `static/css/`：
+| 阶段 | 状态 |
+|---|---|
+| 任务 0 环境与项目初始化 | ✅ 完成 |
+| 任务 1 数据模式与导入样例 | ✅ 完成（schema / 指标注册表 / 40 个指标 / 样例 / 校验规则） |
+| 任务 2 导入、预览、校验与去重 | ✅ 完成（loader / 五桶预览 / 批次 / 冲突登记 / CLI） |
+| 任务 3 本地数据库与基础 UI | ✅ 完成（确认/驳回/修正/撤销/裁决 + FastAPI 界面 + 鉴权） |
+| 任务 4 趋势统计与报告 | ✅ 完成（窗口聚合 / 覆盖率 / 日报周报 / 数字追溯） |
+| 任务 5 规则提醒 | ✅ 完成（中位数+MAD 基线 / 4 条规则 / 去重冷却 / 已读反馈） |
+| 任务 6 DeepSeek 接入与费用监控 | ✅ 完成（独立模块 / 缓存 / 调用日志 / 失败降级） |
+| 任务 7 回归、打包与平板评估 | ✅ 完成（备份恢复实测 / runbook / 平板评估分列） |
+| T07 现状核验 | 已批准（`reports/T07_GAP_ANALYSIS.md`） |
+| T08 训练日志与恢复上下文 | 已批准（`reports/T08_TRAINING_DATA_REPORT.md`） |
+| T09 每日建议引擎 | 已批准（`reports/T09_DAILY_GUIDANCE_REPORT.md`） |
+| T10 Simple 训练 UI | 待审核（`reports/T10_SIMPLE_TRAINING_UI_REPORT.md`） |
+| T11 Chronos 整合 | 待审核（`reports/T11_CHRONOS_TRAINING_UI_REPORT.md`） |
 
-| 文件 | 放什么 | 什么时候改 |
+### 0.1.3 新增（T08–T11）
+
+| 项 | 内容 |
+|---|---|
+| 训练日志 | `training_sessions`：日期、类型、部位、内容、时长、主观强度、完成度；时长与强度可空 |
+| 恢复反馈 | `recovery_feedback`：精力、疲劳、酸痛部位/程度、是否不适；一天一条，DB 约束 `source=subjective` |
+| 训练偏好 | `training_preferences`：器材、每周训练日、时间预算、避练动作 |
+| 每日建议 | `guidance/`：休息 / 轻松活动 / 常规训练 / 资料不足，四类输出均带依据、窗口、覆盖度、不确定性、规则版本 |
+| 可选 AI | `advice --explain`：先打印将发送的摘要，`--confirm-send` 才调用；失败退回本地解释 |
+| 迁移 | `002_training.sql`，schema v1 → v2，幂等、旧库可升级、旧备份恢复时自动升级 |
+| 界面 | 首页今日建议卡 + 快速训练；`/training` 训练/反馈/偏好三表单（T10）；`/chronos` 六刻度拨盘 + 中心助手 + 拖拽渐进增强（T11） |
+| 测试 | 382 → **463 passed**（新增 81 条） |
+
+> T10 已交付界面，等你按 `docs/10-tablet-manual-check.md` 在平板上验证；T11 的拨盘设计见 `docs/11-chronos-dial-concept.md`。
+
+### 0.1.2 变更（UI 设计落地 + 时钟模式 Demo）
+
+| 项 | 0.1.1 | 0.1.2 |
 |---|---|---|
-| `css/tokens.css` | 颜色、字号、圆角、阴影、侧栏宽度、字体 | **换肤/调主题首先改这里**；不要在别处硬编码颜色 |
-| `css/base.css` | reset、排版、应用外壳（侧栏/内容区/页头） | 改页面骨架时（所有页面都会受影响） |
-| `css/components.css` | 卡片、指标卡、表格、标签、按钮、表单、图表、步骤条… | 改可复用组件外观时 |
-| `css/pages.css` | 页面私有样式（当前：时钟模式表盘） | 新页面有独特版式时 |
+| 导航 | 顶部一行 5 个链接 | 左侧侧栏 + 分组（总览/分析/数据/其他）；<1024px 折成横向导航 |
+| 首页 | 计数卡 + 两张表 | 今日摘要、4 张指标卡（值/单位/有效天数/状态点）、睡眠柱状图 + 目标线、待处理、最近记录 |
+| 睡眠分析 | 无 | 新增 `/sleep`：每日时长柱状（缺失空心柱）+ 目标线 + 阶段比例 + 明细 |
+| 指标趋势 | 无 | 新增 `/trends`：折线/柱状/区间带，缺失断线，区间端点不显示均值 |
+| 时钟模式 | 无 | 新增 `/chronos` Demo：6 扇区外环 + 中心摘要 + 普通入口；模式存 `settings.ui_mode` |
+| 设计系统 | 176 行、1 个断点 | 设计 token（色板/字号/间距/圆角/阴影）+ 3 个断点 + 触控 44px |
+| 状态语义 | 一套 tag | 记录状态 / 指标可信度 / 数据充分性三套，互不复用颜色 |
 
-常见美化动作：
+图表为**原生 SVG**，无新增依赖；所有数值仍走 `reports/format.py` 的格式化。
 
-```css
-/* 想换主色：只改 tokens.css */
-:root {
-  --primary: #123456;       /* 主色 */
-  --primary-soft: #E3EEF6;  /* 主色的浅底，用于选中态 */
-  --accent: #0E8C7F;        /* 辅助色（正向） */
-}
-```
+### 0.1.1 变更（审查修复）
 
-> 约定：一处语义一个 token。新增颜色先加到 `tokens.css` 再引用，
-> 否则下次换肤会漏掉硬编码的那一处。
+| 项 | 0.1.0 | 0.1.1 |
+|---|---|---|
+| 睡眠目标 | 420 分钟作为默认值，提醒文案直接写"目标 7 小时"，读起来像"你的目标" | 区分「用户设定」与「默认参考值」。未配置时文案为"默认参考值 7 小时（成人常见建议 7–9 小时的下沿；未按年龄、性别或作息调整）" |
+| 年龄适配 | 无 | **仍然没有**。代码里 `AGE_ADAPTATION_IMPLEMENTED = False`，有测试断言它为假——不做的功能不许暗示做了 |
+| 提醒边界 | 文案未声明性质 | 触发原因末尾固定追加"仅作趋势观察，不构成诊断" |
+| HRV / 血氧区间 | 只有平均值字段，区间无处安放 | 新增 4 个 `range_bound` 端点指标（`hrv_min_ms`/`hrv_max_ms`/`spo2_min_percent`/`spo2_max_percent`），`in_report=0`；注册表导入时断言它们不得进报告 |
+| 指标可信度 | 未标注 | 每个指标带 `verification`；**当前 40 个全部是 `provisional`**，未经厂商字段核对 |
+| 死配置 | `HEALTH_AGENT_TZ` 读入后从未使用 | 删除 |
+| 设置页 | 不显示睡眠目标 | 显示当前生效值及其来源（默认参考值 / 你设定的目标），不提供第二个修改入口 |
 
----
-
-## 3. 新增一个页面（三步）
-
-**第一步**：在 `ui/pages.py` 的 `PAGES` 里加一条：
-
-```python
-Page("weight", "/weight", "体重", "分析", "体重", 6)   # 最后两个参数 = 表盘短名、扇区序号
-```
-
-加完导航、时钟模式的「普通入口」链接网格会自动包含它；如果给了 `dial_label`，
-表盘会多一个扇区（记得同步 `context.chronos_sectors()` 的预览映射，否则 KeyError 会提醒你）。
-
-**第二步**：在 `ui/app.py` 注册只读路由并渲染模板：
-
-```python
-@app.get("/weight", response_class=HTMLResponse)
-def weight_page(request: Request, conn=Depends(get_db)):
-    end = latest_data_date(conn) or date.today()
-    return render(request, "weight.html", tiles=dashboard_tiles(conn, end), end_day=end.isoformat())
-```
-
-**第三步**：新建 `templates/weight.html`，继承 `base.html`：
-
-```jinja
-{% extends "base.html" %}
-{% block title %}体重{% endblock %}
-{% block content %}
-<h1>体重</h1>
-{% from "_macros.html" import stat_card %}
-<section class="tiles">{% for tile in tiles %}{{ stat_card(tile) }}{% endfor %}</section>
-{% endblock %}
-```
-
-最后跑 `tests/test_ui_modularity.py`：它会自动检查新页面能 200、导航里有它、
-模板没写死链接。**写页面时不要硬编码 href，一律用 `page.href` / `link_pages`。**
+> 说明：**任务 0–7 全部完成**（P0 范围）。未配置 AI 密钥时全部功能照常，简报使用本地模板文案；
+> 配置后可在报告页点「用 AI 改写」按需调用。运维与限制见 `docs/02-runbook.md`。
 
 ---
 
-## 4. 新增一个可复用组件
+## 环境
 
-1. 在 `templates/_macros.html` 加宏（只接收数据，不查库）；
-2. 在 `css/components.css` 加样式，颜色/圆角全部用 token；
-3. 给它写一条 HTML 断言测试（`tests/test_t04_simple_ui.py` 里有现成写法）。
+- Windows（开发机），Python ≥ 3.11
+- 依赖清单见 `requirements.txt` / `pyproject.toml`（FastAPI、uvicorn、Jinja2、httpx）
+- 统计层用标准库实现：窗口只有 7–28 天、数据量在万行以内，不需要 pandas。
+  等真的需要复杂重采样或数据量上一个量级时再引入（判据写在方案文档 §15）。
 
-命名约定：宏名不要与上下文变量同名（历史上 `chart` 互相遮蔽过，统一 `import chart as render_chart`）。
-
----
-
-## 5. 想加 JS（默认零 JS）
-
-项目默认零 JS，所有交互都能在无脚本下完成。确需脚本时：
-
-1. 只在 `base.html` 的 `{% block scripts %}` 里加，不要散落在页面模板；
-2. **渐进增强**：没有脚本时页面必须仍可用（导航、表单提交不能依赖脚本）；
-3. 尊重 `prefers-reduced-motion`，不要做持续高频动画；
-4. 不要在 GET 渲染里发起写操作或外部请求；
-5. 加完把 `tests/test_ui_modularity.py::test_templates_do_not_contain_inline_scripts`
-   放宽为"允许在 scripts 块内"，并在报告里写明理由。
-
----
-
-## 6. 新增一个健康指标
-
-指标是数据层的事，不动 UI：
-
-1. `src/health_agent/catalog.py` 加一行 `_m(...)`（名称、显示名、单位、类型、值域、`in_report`）；
-2. 跑 `python scripts/gen_data_dictionary.py` 重新生成 `docs/01-data-dictionary.md`
-   （有测试检查"每个指标都在字典里"）；
-3. 想让它出现在首页指标卡：改 `context.py` 的 `_TILE_METRICS`；
-4. 想让它进报告：确认 `catalog` 里 `in_report=True`（`range_bound` 指标会被断言拦住）。
-
-## 7. 新增一条提醒规则
-
-1. `src/health_agent/rules/engine.py` 的 `ALL_RULES` 加规则函数（返回 reason / suggestion / evidence）；
-2. 阈值从 `config.py` 的环境变量读，**不要写死数字**，也不要加"能在界面上改"的假控件
-   （唯一的可写配置例外见 §7.5）；
-3. 在 `tests/test_rules.py` 加触发/去重/冷却测试；
-4. 提醒卡片会自动出现——模板按 `rule_id` 渲染，不需要改 UI。
-
----
-
-## 7.5 配置项什么时候可以写进界面
-
-默认规则仍是"阈值只读"：环境变量是唯一事实源，页面上不放看起来能改的控件。
-唯一的例外是 `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL`（`设置 → AI 分析接口`），
-判据是这三条同时成立：
-
-1. **改了不影响口径**：它只决定"文案由谁改写"，不参与统计、基线、提醒判断；
-2. **改错有安全网**：密钥填错最坏结果是退回本地模板文案，数据不受影响；
-3. **写下去的东西用户看得见**：写的是本机 `.env`，不是藏在数据库里的另一份副本。
-
-不满足这三条的，一律只读 + 指向环境变量。做成可写时照这个模板：
-
-- 写盘只有一处：`config.save_ai_config()`（原子替换、保留其它行与注释；
-  `None` = 不改、`""` = 删除，**别把"没填"当"清空"**）；
-- 写完重新装载：`load_settings(project_root=settings.env_path.parent)`，
-  再 `request.app.state.settings = 新值`。路由闭包读的是同一个 `settings` 名字，
-  所以改完立即生效、不用重启；
-- 密钥**永不回显**，只给尾号（`Settings.ai_key_tail`；短串不显示尾号，
-  免得把"测试"这类占位符印在页面上）；
-- "试一试"与"保存"是两件事：试连走 POST，不写文件、不落 `ai_call_log`、不产生分析；
-- 进程环境变量优先于 `.env`，被压住时要明说是哪几个变量（`config.ai_env_override_keys()`）；
-- 回归测试在 `tests/test_ai_config.py`（预设解析、`.env` 往返、留空/清除语义、
-  密钥不落页面、GET 零网络、试连成败两条路径）。
-
----
-
-## 8. 守门测试（改完跑一遍）
+## 安装
 
 ```bash
-.venv/Scripts/python.exe -m pytest tests/test_ui_modularity.py   # 结构没走回头路
-.venv/Scripts/python.exe -m pytest                               # 全量
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
+.venv/Scripts/python.exe -m pip install -e .
 ```
 
-`test_ui_modularity.py` 守着这些事：
+`requirements.txt` 是运行时依赖；`requirements-dev.txt` 在其基础上加 pytest（版本已锁）；
+`pip install -e .` 让命令行入口可以直接用，不必再设 `PYTHONPATH`。
 
-- 页面清单只有 `pages.py` 一处，模板里不许出现写死的导航 href；
-- 表盘扇区与注册表一致；
-- `app.css` 只做 `@import`，四个分层文件按序存在；
-- `tokens.css` 里只有 `:root`（别把规则塞进 token 层）；
-- `base.html` 保留 `styles / head / scripts / nav_extra / body_class` 扩展块；
-- 模板里没有 `<script>`（零 JS 基线）。
+## 启动
+
+```bash
+# 全部测试
+.venv/Scripts/python.exe -m pytest
+
+# 界面
+.venv/Scripts/python.exe -m health_agent.cli serve
+# 浏览器打开 http://127.0.0.1:8000
+
+# 命令行
+.venv/Scripts/python.exe -m health_agent.cli init
+.venv/Scripts/python.exe -m health_agent.cli import test_data/sample_daily_metrics.json          # 只预览
+.venv/Scripts/python.exe -m health_agent.cli import test_data/sample_daily_metrics.json --commit  # 写库
+.venv/Scripts/python.exe -m health_agent.cli stats
+.venv/Scripts/python.exe -m health_agent.cli conflicts
+
+# 训练日志与每日建议（T08 / T09）
+.venv/Scripts/python.exe -m health_agent.cli training add --type strength --parts "胸,肩" --duration 45
+.venv/Scripts/python.exe -m health_agent.cli training list --days 14
+.venv/Scripts/python.exe -m health_agent.cli feedback --energy 3 --fatigue 3 --soreness-parts 胸 --soreness-level 2
+.venv/Scripts/python.exe -m health_agent.cli prefs --days 3 --time-budget 45 --equipment "哑铃,弹力带"
+.venv/Scripts/python.exe -m health_agent.cli advice                 # 本地规则
+.venv/Scripts/python.exe -m health_agent.cli advice --json          # 含依据与不确定性
+.venv/Scripts/python.exe -m health_agent.cli advice --explain       # 只打印将发送的摘要，不发送
+```
+
+### 界面里有什么
+
+| 页面 | 能做什么 |
+|---|---|
+| `/` | **星环首页**：中央状态核心 + 六个模块（睡眠/恢复/训练/报告/助手/趋势）环形导航，选中后右侧展开该模块的摘要与真实趋势 |
+| `/records` | 按指标/状态筛选；确认、驳回、改值、删除 |
+| `/training` | 记训练、记当天状态（精力/疲劳/酸痛）、训练偏好、删除；与首页同一张建议卡 |
+| `/imports` | 上传 JSON/CSV/TSV → 预览 → 写入；批次确认全部 / 撤销 |
+| `/conflicts` | 新旧值对照，选择「保留已有」或「采用新值」 |
+| `/sleep` | 睡眠时长柱状图 + 目标线（标注来源）+ 阶段结构 + 明细；数据不足不给趋势 |
+| `/trends` | 多指标折线/柱状/区间带；缺失断线；区间端点不显示均值 |
+| `/chronos` | 与 `/` 同一条装配路径（星环首页）；环形导航本身不跳转，摘要里的按钮才离开本页 |
+| `/`（详细列表模式） | 设置 → 外观 可切回：今日建议卡、指标卡、睡眠图、快速训练记录、待处理、最近记录 |
+| `/reports` | 每日简报 / 每周报告；每个数字可展开看来源记录；数据质量与覆盖率 |
+| `/alerts` | 提醒列表；立即评估；标记已读；三条反馈（有帮助/已照做/不相关） |
+| `/settings` | 生活背景（全部可跳过）；运行信息；导出入口 |
+| `/export.csv` `/export.json` | 全量导出（CSV 带 BOM，Excel 中文不乱码） |
+
+**访问控制**：未设密码时只监听 127.0.0.1；要开局域网必须先设密码。
+
+```bash
+.venv/Scripts/python.exe -m health_agent.cli passwd   # 生成 HEALTH_AGENT_PASSWORD_HASH
+```
+
+预期：`463 passed`。测试覆盖：指标注册表不变式、单位白名单与换算、单行校验的全部
+拒绝与标记路径、迁移幂等、部分唯一索引拦截静默覆盖、配置约束、文档一致性、
+JSON/CSV 读取（含 BOM 与 GBK）、五桶分桶、批次计数、冲突登记、CLI 干跑不写库、状态迁移、鉴权与 CSRF、导出、设置读写、窗口聚合（确认制/缺失率/样本不足）、
+报告数字追溯、周报 4/7 覆盖率门槛、基线（MAD/IQR 兜底）、
+4 条规则的触发/不触发/边界/去重/冷却/反馈、
+AI 降级与缓存、HTTP 重试策略、提示词输出校验、
+备份完整性校验与恢复（含篡改拒绝）、
+训练日志迁移（新库/旧库/重复迁移/旧备份升级）、校验与导出、
+建议引擎的 9 类场景、契约不变式、禁用词守卫、AI 超时与非法输出降级。
+
+### 导入的五个结局
+
+每次导入，每一行必然落到且只落到一个桶里（`preview.balanced` 会断言总数守恒）：
+
+| 桶 | 含义 | 是否入库 |
+|---|---|---|
+| `accepted` | 校验通过、无标记 | 是，`pending` |
+| `review` | 有标记（不可读 / 超范围 / 单位推断 / 文本解析 / 缺值） | 是，`pending` |
+| `duplicates` | 完全重复（同键同值） | 否，跳过 |
+| `conflicts` | 同槽位不同值 | 是，`pending` + 登记冲突待裁决 |
+| `rejected` | 结构性不合格 | 否，给出错误码 |
+
+**所有入库记录都是 `pending`**，导入本身永远不会产生 `confirmed`。
+
+## 配置
+
+复制 `.env.example` 为 `.env` 后按需填写。**密钥只放环境变量，禁止写进代码**。
+
+```bash
+cp .env.example .env
+```
+
+关键项：
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `HEALTH_AGENT_DB_PATH` | `data/health.db` | 本地库路径。本机部署已指向 `D:/HealthData/health.db`（见 runbook §9） |
+| `HEALTH_AGENT_LAN` | `0` | 置 1 允许局域网访问；**必须同时设置密码 hash，否则拒绝启动** |
+| `AI_API_KEY` | 空 | 为空时 AI 全部走本地模板降级，不影响记录与统计 |
+| `AI_BASE_URL` | `https://api.deepseek.com/v1` | 任何 OpenAI 兼容端点都能接 |
+| `AI_MODEL` | `deepseek-flash` | 模型可切换，不硬编码；不确定就用设置页「保存并拉取可用模型」 |
+| `HEALTH_AGENT_SLEEP_TARGET_MIN` | `420` | 睡眠目标（分钟），用于趋势提醒 |
+| `HEALTH_AGENT_BASELINE_MAD_FACTOR` | `2.5` | 基线偏离阈值倍数 |
+| `HEALTH_AGENT_RULE_COOLDOWN_HOURS` | `72` | 同类提醒冷却小时数 |
+| `HEALTH_AGENT_SLEEP_DEFICIT_DAYS` | `3` | 近 7 天几天睡眠不足才提醒 |
+| `HEALTH_AGENT_RESTING_HR_SHIFT_BPM` | `8` | 静息心率偏离基线多少才提醒 |
+| `HEALTH_AGENT_DATA_GAP_RATE` | `0.5` | 缺失率超过多少提示补录 |
+| `AI_TIMEOUT_SECONDS` | `20` | AI 请求超时（秒） |
+| `AI_MAX_RETRIES` | `2` | AI 请求重试次数（4xx 不重试） |
+
+AI 这三项也可以直接在界面「设置 → AI 分析接口」里填：保存后写回 `.env` 并立即生效
+（不用重启），页面上只显示密钥尾号。老名字 `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` /
+`DEEPSEEK_MODEL` / `DEEPSEEK_TIMEOUT_SECONDS` / `DEEPSEEK_MAX_RETRIES` 仍然有效，
+两套都填时以 `AI_*` 为准。"
+
+### 接别家模型（DeepSeek 之外的 OpenAI 兼容接口）
+
+只要服务商提供 `POST {base_url}/chat/completions` 形状的接口就能用，不是白名单：
+
+| 服务商 | `AI_BASE_URL` | `AI_MODEL` 示例 |
+|---|---|---|
+| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-flash` / `deepseek-v4-pro`（实测值，推理型） |
+| 通义千问（百炼兼容模式） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` |
+| Moonshot / Kimi | `https://api.moonshot.cn/v1` | `moonshot-v1-8k` |
+| 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash` |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
+| 本地 Ollama | `http://127.0.0.1:11434/v1` | `qwen2.5:7b` |
+
+界面里选"服务商"只是帮你把这两项填好；填完点「测试连接」可以只发一句话验一次
+（不保存、不写记录、不产生分析）。注意：进程环境变量的优先级高于 `.env`，
+如果启动前 `export` 过同名变量，界面保存的值会被它压住，页面会明确提示。
+
+## 目录
+
+```
+src/health_agent/
+├─ catalog.py      指标注册表（canonical schema 唯一事实源）
+├─ config.py       环境变量 → Settings
+├─ errors.py       错误码与异常
+├─ validation/     单位白名单、单行校验（纯函数）
+├─ storage/        SQLite 连接、迁移、keys（去重键）、repository
+├─ ingestion/      导入与批次（任务 2）
+├─ analytics/      聚合与基线（任务 4）
+├─ rules/          提醒引擎（任务 5）
+├─ ai_client/      DeepSeek 封装（任务 6）
+├─ reports/        日报 / 周报（任务 4）
+└─ ui/             FastAPI 界面（任务 3）
+```
+
+依赖方向是单向的：`ui → reports → analytics → storage`，
+`ui → ingestion → validation`。SQL 只出现在 `storage/` 内。
+
+## 提醒规则
+
+| rule_id | 触发条件 | 冷却 |
+|---|---|---|
+| `sleep_deficit_trend` | 近 7 天 ≥3 天夜间睡眠低于目标 90%，且覆盖 ≥4/7 天 | 72h |
+| `resting_hr_shift` | 静息心率连续 3 天偏离个人基线超过 8 次/分 | 72h |
+| `baseline_deviation` | 睡眠平均心率 / 步数连续 3 天偏离基线（中位数 + MAD） | 72h |
+| `data_gap` | 近 7 天缺失率 > 50%（补录提示，不是健康提醒） | 72h |
+
+每条提醒都带：触发原因、依据的 record_id 列表、一条低风险建议。
+同一窗口同一规则只发一次（`dedup_key` 唯一），不同窗口受冷却期约束。
+
+**个人基线**用中位数 + MAD，而不是均值 + 标准差——生理数据天然有离群值，
+均值会被单个熬夜夜拉偏。MAD 退化为 0 时（整数指标常见）自动改用 IQR 估计，
+仍为 0 才判定"样本过于单一、无法建基线"。
+
+**没有任何规则解读心律筛查结果**：那类字段只保存设备页面原文，测试会扫描源码确保这一点。
+
+## AI 使用方式
+
+**默认不调用。** 打开报告页只读缓存，页面响应 30–120ms；要 AI 改写必须点按钮。
+
+- 发送内容：已算好的摘要（指标名、均值、区间、缺口），**不含 record_id、不含截图、不含账号**
+- 输出约束：模型必须返回 `{"text": "…"}`；解析失败按失败处理，不把半成品塞进报告
+- 缓存键：`提示词版本 + 模型 + 摘要哈希`，同一份摘要不重复付费
+- 调用日志：`ai_call_log` 记录模型、Token、耗时、状态；**费用一律记 `unavailable`**，
+  不拿官方标价冒充实际账单
+- 失败处理：超时/网络/4xx/输出不合规 → 退回本地模板文案，记录/统计/提醒完全不受影响
+
+接口契约：`LLMClient` 协议 + OpenAI 兼容的 `POST {base_url}/chat/completions`。
+**最终接口尚未由用户确认**，换供应商只需换一个实现类。
+
+## 数据规则（改动代码前请先读）
+
+1. **缺失就是 `NULL`**，绝不以 0 填充，绝不猜测无法辨认的数值。
+2. 截图/OCR 提取的结果一律先 `pending`，人工确认后才变 `confirmed`。
+3. 未 `confirmed` 的数据不进任何趋势、基线或提醒计算。
+4. 同一来源 + 日期 + 指标 + 周期的记录最多一条 `confirmed`（数据库部分唯一索引强制）；
+   冲突并存于 `pending`，须人工裁决，**不允许静默覆盖**。
+5. `period_type` 是记录属性：`week` / `month` 记录永不参与日趋势。
+6. 比例不得换算成时长（如深睡 18% 不得乘总时长变成分钟）。
+7. 设备给出的评分（压力、深睡连续性等）原样存储，不做二次医学解读。
+
+## 已知限制
+
+- 指标合理值域目前来自常规生理范围，**尚未逐项与华为官方字段说明核对**，40 个指标全部标记
+  `provisional`，可能过严或过松（超出范围只标记、不修正、不丢弃）。
+- **睡眠目标未做年龄适配**：没有年龄字段，默认 420 分钟只是参考值，提醒文案会如实说明。
+- 无 HTTPS；局域网模式仅单密码鉴权，不要暴露到公网（详见 `docs/03-tablet-access.md`）。
+- 没有真实截图样本做回归，`test_data/` 里的数据全部是**编造的**。
+- 平板端（联想 Yoga Pad Pro 12.7 / 联想浏览器）未实测，验证表见 `docs/03-tablet-access.md` §5。
+- 界面没有 HTTPS：局域网使用即等于信任该网络，不要在公共 Wi-Fi 上开启。
+- 没有「忘记密码」机制——密码 hash 存在 `.env` 里，丢了就删掉重设。
+- 会话密钥存在 `data/.session_secret`，删除它会让所有已登录会话失效。
+- **逻辑键只到「日期」粒度**：同来源同日第二条瞬时测量（如早晚各一次体温）会被判为冲突，
+  而不是当成两次测量。启用 P2 指标（体温/体重/血糖）前必须把观测时刻纳入逻辑键。
+- 简报可用 AI 改写（需配置密钥，界面或 `.env` 均可）；未配置时用本地模板文案，功能不缺失。
+- 提醒只做站内列表，没有桌面通知或手机推送；需要主动查看 `/alerts`。
+- 「不相关」反馈目前只记录，尚未据此自动降频（方案里有这个设计，未实现）。
+- AI 费用无法从当前接口拿到账单数据，日志中 `cost_source` 固定为 `unavailable`；
+  接入真实计费后再补。
+- AI 通道只在明确点击时触发，因此报告不会"自动变好看"；这是刻意取舍（避免静默花钱）。
+- CSV 读入兼容 BOM 与中文编码：`utf-8-sig` 优先、`gb18030` 兜底（Excel 导出的中文 CSV 常见）。
+
+## 文档
+
+- `docs/00-architecture-plan-v1.md` — 架构与实施方案（含 4 个规格冲突的裁决 + 修订记录）
+- `docs/01-data-dictionary.md` — 数据字典（由 `catalog.py` 派生）
+- `docs/02-runbook.md` — **运维手册**：安装、备份、恢复、排障、升级
+- `docs/03-tablet-access.md` — 平板访问评估（联想 Yoga Pad 专章在 §5）
+- `docs/04-ui-design-spec-v1.md` — UI 设计规范（双模式、组件、断点）
+- `docs/05-handoff.md` — **交接说明**（现状 / 约定 / 下一步）
+- `docs/06-ui-extension-guide.md` — **UI 扩展与美化指南**（换肤 / 加页面 / 加组件）
+- `docs/07-workbench-checklist.md` — 工作台搭建前置条件与验收清单
+- `docs/08-workbench-overview.md` — **工作台总览**（模块 / 布局 / 数据来源 / 交互 / 配置）
+- `docs/09-training-and-guidance.md` — **训练日志与每日建议使用说明**（命令 / JSON 契约 / 边界）
+- `docs/10-tablet-manual-check.md` — **平板端手动验证清单**（局域网、密码、22 项验收）
+- `docs/11-chronos-dial-concept.md` — **Chronos 拨盘设计**（Lumen V4 取舍表；生产实现见 T11 报告）
+
+## 备份与恢复
+
+```bash
+.venv/Scripts/python.exe -m health_agent.cli backup
+.venv/Scripts/python.exe -m health_agent.cli restore data/backup/health-<时间戳>.zip --force
+```
+
+备份包 = SQLite 一致性快照（backup API，不是文件复制）+ manifest（sha256 / 记录数 / schema 版本）。
+恢复前校验指纹，目标库已存在时必须显式 `--force`，且会先留 `.bak`。
+
+实测：21 条记录 + 43 条审计 → 备份 → 删库 → 恢复 → 记录数、审计数、导出内容指纹完全一致。

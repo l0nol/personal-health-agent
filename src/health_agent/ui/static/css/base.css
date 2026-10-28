@@ -1,5 +1,5 @@
 /* ============================================================
-   base.css — 基础层：reset、排版、应用外壳（侧栏 / 内容区 / 页头）
+   base.css — 基础层：reset、排版、应用外壳（侧栏 / 内容区 / 页头 / 环境光）
    这一层决定页面骨架，改之前先确认所有页面都受影响。
    ============================================================ */
 
@@ -7,7 +7,7 @@
 
 html {
   /* Android 浏览器（联想浏览器/华为浏览器等）会做"字体放大"，
-     不锁住会把指标卡与表盘文字挤变形 */
+     不锁住会把指标卡与星环文字挤变形 */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -20,10 +20,25 @@ body {
   font-size: 14px;
   line-height: 1.6;
   -webkit-tap-highlight-color: transparent;  /* 触屏点按不要灰底闪烁 */
+  color-scheme: dark;                         /* 原生控件（日期选择器等）跟着走深色 */
+}
+
+/* 环境光：两个大范围、低透明度的径向光，只负责"这不是纯黑纸面"，
+   不参与任何布局；pointer-events:none 保证它不会挡住点击。 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(58vw 46vw at 12% -8%, rgba(45, 96, 180, .20), transparent 62%),
+    radial-gradient(46vw 40vw at 92% 8%, rgba(24, 116, 122, .14), transparent 64%),
+    radial-gradient(70vw 48vw at 50% 108%, rgba(30, 64, 130, .16), transparent 68%);
 }
 
 /* 可点元素去掉 300ms 双 tap 延迟（Chromium 内核移动浏览器通用） */
-a, button, .btn, .nav-link, .sector, .seg-item, .core-enter { touch-action: manipulation; }
+a, button, .btn, .nav-link, .seg-item, .chip, .ring-node, .core-enter { touch-action: manipulation; }
 
 /* 地址栏收放时 100vh 会跳；支持的浏览器用 dvh */
 .app { min-height: 100vh; }
@@ -31,40 +46,80 @@ a, button, .btn, .nav-link, .sector, .seg-item, .core-enter { touch-action: mani
   .app { min-height: 100dvh; }
 }
 
-a { color: var(--primary); text-decoration: none; }
+a { color: var(--primary-strong); text-decoration: none; }
 a:hover { text-decoration: underline; }
-h1 { font-size: 22px; line-height: 30px; font-weight: 500; margin: 0; }
+h1 { font-size: 22px; line-height: 30px; font-weight: 500; margin: 0; letter-spacing: -.01em; }
 h2 { font-size: 16px; line-height: 24px; font-weight: 500; margin: 0 0 12px; }
 p { margin: 0 0 8px; }
-code, .mono { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+code, .mono { font-family: var(--font-num); font-size: 12px; }
 
-.app { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); min-height: 100vh; }
+.app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------------- 侧栏 ---------------- */
 
 .sidebar {
-  background: var(--surface);
+  background: linear-gradient(180deg, rgba(10, 18, 31, .92) 0%, rgba(6, 11, 20, .94) 100%);
   border-right: 1px solid var(--line);
-  padding: 20px 14px;
+  padding: 22px 14px 18px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
 }
-.brand { font-size: 14px; font-weight: 500; color: var(--text); padding: 0 8px; }
+
+.brand {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 13.5px; font-weight: 500; color: var(--text);
+  padding: 2px 8px 12px; border-bottom: 1px solid var(--line);
+  letter-spacing: .01em; line-height: 1.35;
+}
+.brand:hover { text-decoration: none; color: #fff; }
+.brand-mark {
+  flex: none; width: 10px; height: 10px; border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #BCE1FF, #4C9AFF 55%, #1E5BB8 100%);
+  box-shadow: 0 0 10px rgba(96, 160, 255, .55), 0 0 22px rgba(96, 160, 255, .28);
+}
+
 .nav { display: flex; flex-direction: column; gap: 2px; }
-.nav-group { font-size: 12px; color: var(--text-3); margin: 10px 8px 2px; padding: 0; }
-.nav-link {
-  display: block; padding: 7px 10px; border-radius: var(--r-control);
-  color: var(--text-2); font-size: 14px;
+.nav-group {
+  font-size: 11px; color: var(--text-3); margin: 12px 8px 4px;
+  padding: 0; letter-spacing: .12em; text-transform: none;
 }
-.nav-link:hover { background: var(--surface-2); text-decoration: none; color: var(--text); }
-.nav-link.is-active { background: var(--primary-soft); color: var(--primary-strong); font-weight: 500; }
+.nav-link {
+  display: block; padding: 8px 10px; border-radius: var(--r-control);
+  color: var(--text-2); font-size: 13.5px;
+  border: 1px solid transparent;
+  transition: background .16s ease, color .16s ease, border-color .16s ease;
+}
+.nav-link:hover { background: rgba(255, 255, 255, .045); text-decoration: none; color: var(--text); }
+.nav-link.is-active {
+  background: linear-gradient(90deg, rgba(63, 127, 232, .22), rgba(63, 127, 232, .04));
+  border-color: rgba(99, 160, 255, .22);
+  color: #F2F8FF;
+  font-weight: 500;
+}
 .sidebar-foot {
   margin-top: auto; display: flex; flex-wrap: wrap; gap: 10px;
   padding: 12px 8px 0; border-top: 1px solid var(--line);
   font-size: 12px; color: var(--text-3);
 }
+.sidebar-foot a { color: var(--text-3); }
+.sidebar-foot a:hover { color: var(--text-2); }
 
-.content { padding: 28px 32px 40px; max-width: 1240px; width: 100%; }
-.foot { margin-top: 32px; color: var(--text-3); font-size: 12px; }
+/* ---------------- 内容区 ---------------- */
+
+.content { padding: 28px 32px 40px; max-width: 1280px; width: 100%; }
+.content.is-wide { max-width: 1560px; }
+.foot { margin-top: 32px; color: var(--text-3); font-size: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
 
 .page-head {
   display: flex; align-items: flex-start; justify-content: space-between;
@@ -80,16 +135,29 @@ code, .mono { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px
 @media (max-width: 1023px) {
   .app { display: block; }
   .sidebar {
+    position: static; height: auto; overflow: visible;
     border-right: none; border-bottom: 1px solid var(--line);
     padding: 12px 16px; flex-direction: column; gap: 10px;
   }
+  .brand { border-bottom: none; padding-bottom: 2px; }
   .nav { flex-direction: row; flex-wrap: wrap; gap: 6px; }
   .nav-group { display: none; }
-  .nav-link { padding: 6px 10px; font-size: 13px; background: var(--surface-2); }
+  .nav-link {
+    padding: 7px 11px; font-size: 13px;
+    background: rgba(255, 255, 255, .04); border-color: var(--line);
+  }
   .sidebar-foot { border-top: none; padding: 0; margin-top: 0; }
   .content { padding: 18px 16px 28px; max-width: none; }
+  /* 窄屏导航一行横向滚动：换行会把星环挤出首屏 */
+  .nav {
+    flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-link { flex: none; white-space: nowrap; }
 }
 
 @media (max-width: 767px) {
   .page-head { flex-direction: column; align-items: stretch; }
+  .brand { font-size: 13px; }
 }

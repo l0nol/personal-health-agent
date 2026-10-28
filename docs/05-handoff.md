@@ -43,7 +43,7 @@ T05 把时钟模式从 Demo 升级为零 JS 两步环形导航；T06 完成最�
 | 备份/恢复 + 指纹校验 | ✅ 实测过 | `backup.py`，`docs/02-runbook.md` §5 |
 | 界面：记录/导入/冲突/提醒/报告/设置 | ✅ 可用 | 0.1.1 交付；T04 重排（五桶顺序、三步条、阈值只读表、数据与隐私分区） |
 | 界面：首页仪表盘 / 睡眠分析 / 指标趋势 | ✅ 0.1.2 新增；T04 加"参照范围"行 | `ui/charts.py`、`tests/test_ui_pages.py`、`tests/test_t04_simple_ui.py` |
-| 时钟模式（表盘导航） | ✅ T05：零 JS 两步交互（选扇区→预览→进入）、键盘方向键、减少动态降级；**无自由拖动旋转**（零 JS 约束，见 T05 报告 §2） | `templates/chronos.html`、`tests/test_t05_chronos.py`、`scripts/verify_t05_browser.js` |
+| 首页（星环）+ 详细列表 | ✅ 2026-10-25 重做：中心状态核心 + 环形导航（六模块）+ 指针最短路径 + 面板展开；零 JS 可用、拖拽为增强；详细列表仍可从设置切回 | `templates/chronos.html`、`ui/context.py`、`docs/13-star-ring-ui.md`、`tests/test_t05_chronos.py`、`tests/test_t11_chronos.py`、`scripts/verify_ring_browser.js` |
 | 平板真机验证 | ❌ 未做，只有服务端行为证据 | `docs/03-tablet-access.md` |
 | 指标与设备字段核对 | ❌ 未做，40 个全为 `provisional` | `docs/01-data-dictionary.md` |
 

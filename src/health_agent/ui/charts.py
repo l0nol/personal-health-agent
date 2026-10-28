@@ -212,6 +212,59 @@ def build_bars(
     return model
 
 
+def build_spark(
+    points: list[SeriesPoint],
+    *,
+    width: int = 132,
+    height: int = 38,
+) -> dict[str, Any]:
+    """迷你趋势线：只画走势，不画坐标轴。
+
+    用在星环面板的"每个指标各一张小图"里——把四条不同量纲的曲线塞进同一张图
+    等于制造假可比性，所以宁可四条小图，也不做多轴叠加。
+
+    规则与 `build_line` 一致：缺失处断开、单点只画点、全空返回 has_data=False。
+    """
+    values = [p.value for p in points if p.value is not None]
+    model: dict[str, Any] = {
+        "kind": "spark",
+        "width": width,
+        "height": height,
+        "has_data": bool(values),
+        "segments": [],
+        "dots": [],
+    }
+    if not values:
+        return model
+
+    pad = 3
+    low, high = min(values), max(values)
+    span = high - low or 1.0
+    top, bottom = pad, height - pad
+    step = (width - pad * 2) / max(len(points) - 1, 1)
+
+    def y_of(value: float) -> float:
+        return bottom - (value - low) / span * (bottom - top)
+
+    segments: list[list[str]] = []
+    current: list[str] = []
+    for index, point in enumerate(points):
+        if point.value is None:
+            if len(current) > 1:
+                segments.append(current)
+            current = []
+            continue
+        x = pad + step * index
+        y = y_of(point.value)
+        current.append(f"{x:.1f},{y:.1f}")
+        model["dots"].append({"x": round(x, 1), "y": round(y, 1)})
+    if len(current) > 1:
+        segments.append(current)
+
+    model["segments"] = [" ".join(segment) for segment in segments]
+    return model
+
+
 def build_band(
     points: list[BandPoint],
     *,

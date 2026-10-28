@@ -223,6 +223,10 @@ def test_home_shows_guidance_card_with_evidence_and_why(tmp_path):
             data={"feedback_date": TODAY.isoformat(), "energy": "1", "fatigue": "5"},
             follow_redirects=False,
         )
+        # 详细列表模式：今日建议卡 + 近 7 天睡眠图（星环页也复用这张建议卡，但布局不同）
+        client.post("/settings/mode", data={"mode": "simple", "next_path": "/"}, follow_redirects=False)
+        # 详细列表模式：今日建议卡 + 近 7 天睡眠图（星环页也复用这张建议卡，但布局不同）
+        client.post("/settings/mode", data={"mode": "simple", "next_path": "/"}, follow_redirects=False)
         body = client.get("/").text
 
     assert "今日建议" in body

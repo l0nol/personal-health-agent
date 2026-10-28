@@ -1,314 +1,638 @@
 /* ============================================================
-   pages.css — 页面层：只放某一张页面自己的样式（当前：时钟模式拨盘）。
+   pages.css — 页面层：只放某一张页面自己的样式（当前：星环首页）。
    新页面如果只是复用现有组件，不需要在这里加任何东西。
+
+   ---------------- 星环首页（2026-10-25 重做） ----------------
+   结构：radio（六个模块 + 闲置）→ .ring-stage（环 + 面板）→ 状态条 → 普通入口。
+
+   交互（零 JS 可用）：
+   - 点模块图标 / 标签 = 选中并展开对应面板（原生 radio + label）；
+   - Tab 进环后用方向键换模块（浏览器原生行为）；
+   - 脚本只做两件增强：指针走最短路径、按角度拖拽选模块。
+
+   布局：
+   - ≥1024px：环与面板并排，面板固定高度内滚动（切换不跳版）；
+   - <1024px：环在上、面板在下，一次只渲染一张（display 切换）；
+   - 手机：环整体缩小，标签仍然可读（用 clamp 跟随视口，不是砍内容）。
+
+   颜色：每个模块一个 --mod，只表示"这是哪个模块"，不是健康评分；
+   光效只加在"当前焦点"上，避免整屏发光。
    ============================================================ */
 
-/* ---------------- 时钟模式（T11）：中心助手 + 外环拨盘 ----------------
-   结构：radio 控件（每个刻度 + 闲置 + 助手） → 表盘 → 状态行 → 助手抽屉。
-   交互：点标签 / Tab+方向键 即可切换（零 JS 可用）；拖拽脚本只做增强。
-   缩放：整盘 min(86vw,470px)，刻度/标签/中心按容器百分比定位，
-         卡内字号用 clamp() 跟随视口 —— 小屏是"整盘缩小"，不是砍内容。
-   颜色：刻度配色只表示"当前选中的功能"，不是健康评分。 */
+/* ---------------- 模块配色（值在 tokens.css） ---------------- */
 
-.chronos-app { display: flex; flex-direction: column; align-items: center; }
-.chronos-app > section { width: 100%; max-width: 470px; }
+.mod-sleep { --mod: var(--c-sleep); }
+.mod-recovery { --mod: var(--c-recovery); }
+.mod-training { --mod: var(--c-training); }
+.mod-reports { --mod: var(--c-reports); }
+.mod-assistant { --mod: var(--c-assistant); }
+.mod-trends { --mod: var(--c-trends); }
 
-/* 隐藏的原生 radio：键盘可聚焦，指针交给 label */
-.sector-input {
-  position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;
+/* ---------------- 页头 ---------------- */
+
+.page-ring .content { max-width: 1560px; padding: 22px 30px 30px; }
+
+.ring-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.ring-head h1 { font-size: clamp(20px, 2vw, 26px); font-weight: 500; letter-spacing: -.015em; }
+.ring-head .sub { color: var(--text-3); font-size: 12.5px; margin: 5px 0 0; }
+.ring-chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ring-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 34px;
+  padding: 5px 12px; border-radius: var(--r-pill);
+  border: 1px solid var(--line); background: rgba(255, 255, 255, .035);
+  color: var(--text-2); font-size: 12.5px;
+}
+.ring-chip b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+.ring-chip:hover { border-color: var(--line-strong); color: var(--text); text-decoration: none; }
+.ring-chip.is-warn b { color: var(--warn); }
+.ring-chip.is-primary {
+  border-color: rgba(99, 160, 255, .32); background: var(--primary-soft); color: #D6E6FF;
 }
 
-.dial {
-  position: relative; width: min(86vw, 470px); aspect-ratio: 1; margin: 0 auto;
-  border-radius: 50%; overflow: hidden; touch-action: manipulation;
-  background: radial-gradient(circle at 50% 36%, var(--surface) 0%, var(--surface-2) 72%, var(--line) 100%);
-  box-shadow: inset 0 0 0 1px var(--line-strong), var(--shadow-1);
-}
-@supports not (aspect-ratio: 1) {
-  .dial::before { content: ""; display: block; padding-bottom: 100%; }
-}
-/* 只有脚本加载后才禁止触屏滚动手势，避免无脚本用户在表盘上滚不动页面 */
-.dial.has-drag { touch-action: none; }
-.dial-face { position: absolute; inset: 4%; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(circle at 50% 30%, var(--surface) 0%, var(--surface-2) 100%);
-  box-shadow: inset 0 0 0 1px var(--line); }
+/* ---------------- 主体：环 + 面板 ---------------- */
 
-/* 刻度：12 主刻度 + 12 细分；选中后细分淡出，让位给中心 */
-.dial-ticks { position: absolute; inset: 0; pointer-events: none; }
-.dial-ticks .tick {
-  position: absolute; width: 2px; height: 5.5%; border-radius: 2px;
-  transform: translate(-50%, -50%) rotate(var(--a));
-  background: var(--line-strong); transition: opacity .3s ease;
-}
-.dial-ticks .tick.minor { width: 1.5px; height: 2.6%; background: var(--text-3); opacity: .45; }
+.ring-home { position: relative; }
 
-/* 当前刻度的高亮弧（60° 段） */
-.dial-arc { position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 2; }
-.dial-arc svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.dial-arc circle { fill: none; stroke: var(--c, var(--primary)); stroke-width: 1.6;
-  stroke-dasharray: 16.67 100; }
+/* 隐藏的原生 radio：键盘可聚焦，指针交互交给 label */
+.ring-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
-/* 指针：指向当前刻度；闲置态淡化 */
-.dial-needle {
-  position: absolute; left: 50%; top: 50%; width: 3px; height: 30%; margin-top: -30%; margin-left: -1.5px;
-  z-index: 3; transform-origin: 50% 100%; transform: rotate(0deg); opacity: .3; border-radius: 2px;
-  background: linear-gradient(180deg, var(--warn), rgba(169, 102, 10, .25));
-}
-.dial-needle::before { content: ""; position: absolute; top: -4px; left: -3px; width: 9px; height: 9px;
-  border-radius: 50%; background: var(--warn); }
-.dial-cap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 7;
-  width: 14px; height: 14px; border-radius: 50%; background: var(--surface);
-  box-shadow: 0 1px 3px rgba(14, 31, 42, .25), inset 0 0 0 1px var(--line-strong); }
-
-/* 功能标签：闲置态带名字；选中后其余缩成小圆环（视觉 26px，命中区 44px） */
-.dial-fbtn {
-  position: absolute; z-index: 6; transform: translate(-50%, -50%);
-  display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px;
-  background: var(--surface); border: 1px solid var(--line); color: var(--text-2);
-  font-size: 13px; white-space: nowrap; cursor: pointer;
-}
-.dial-fbtn svg { width: 15px; height: 15px; color: var(--c); }
-.dial-fbtn:hover { background: var(--surface-2); color: var(--text); }
-.dial-fbtn::after { /* 命中区兜底：缩小态也要 ≥44px */
-  content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: 100%; height: 100%; min-width: 44px; min-height: 44px; border-radius: 999px;
+.ring-stage {
+  max-width: 1180px; margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  gap: 30px;
+  align-items: center;
+  --deg: 0deg;
 }
 
-/* 中心：闲置 56%，选中 72%（与参考原型同比例） */
-.dial-core {
-  position: absolute; left: 50%; top: 50%; width: 56%; aspect-ratio: 1;
-  transform: translate(-50%, -50%); border-radius: 50%; overflow: hidden; z-index: 5;
-  display: grid; place-items: center; text-align: center;
-  background: radial-gradient(circle at 50% 34%, var(--surface) 0%, var(--surface-2) 78%);
-  box-shadow: inset 0 0 0 1px var(--line), inset 0 -12px 28px rgba(14, 31, 42, .06);
+/* ---------------- 环 ---------------- */
+
+.orbit-wrap { display: grid; place-items: center; min-width: 0; }
+
+.orbit::before {
+  content: ""; position: absolute; inset: 3%; border-radius: 50%;
+  pointer-events: none; z-index: 1; opacity: .5;
+  background-image:
+    radial-gradient(1px 1px at 18% 24%, rgba(214, 232, 255, .9), transparent 60%),
+    radial-gradient(1px 1px at 76% 18%, rgba(214, 232, 255, .7), transparent 60%),
+    radial-gradient(1px 1px at 88% 62%, rgba(198, 226, 255, .6), transparent 60%),
+    radial-gradient(1px 1px at 32% 78%, rgba(198, 226, 255, .55), transparent 60%),
+    radial-gradient(1px 1px at 62% 88%, rgba(214, 232, 255, .5), transparent 60%),
+    radial-gradient(1px 1px at 44% 12%, rgba(198, 226, 255, .45), transparent 60%);
+}
+.orbit {
+  --size: clamp(280px, min(44vw, 60vh), 520px);
+  position: relative; width: var(--size); height: var(--size);
+  border-radius: 50%;
+  isolation: isolate;
 }
 @supports not (aspect-ratio: 1) {
-  .dial-core::before { content: ""; display: block; padding-bottom: 100%; }
+  /* 老内核兜底：没有 aspect-ratio 时用 padding 撑出正方形 */
+  .orbit::before { content: ""; display: block; padding-bottom: 100%; }
 }
 
-/* 闲置态：助手球 */
-.dial-orb { display: none; width: 100%; height: 100%; position: relative; place-items: center; cursor: pointer; }
-.dial-orb .orb-rings { position: absolute; inset: 0; pointer-events: none; }
-.dial-orb .orb-rings i { position: absolute; inset: 13%; border-radius: 50%; border: 1px solid var(--accent); opacity: .35; }
-.dial-orb .orb-ball {
-  position: relative; width: 46%; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center;
-  background: radial-gradient(circle at 34% 28%, #9df3e4, #3ED3C0 48%, #11897a 100%);
-  box-shadow: 0 10px 24px rgba(14, 140, 127, .28), inset 0 2px 8px rgba(255, 255, 255, .45);
+/* 中央光：只做呼吸，不做位移，避免整块界面"晃" */
+.orbit-aura {
+  position: absolute; inset: 8%; border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 52%, rgba(78, 142, 250, .42), rgba(38, 92, 190, .14) 48%, transparent 72%);
+  filter: blur(2px);
+  z-index: 0;
 }
-.dial-orb .orb-ball svg { width: 38%; height: 38%; color: #04201b; }
-.dial-orb .orb-hint { position: absolute; bottom: 9%; font-size: 12px; color: var(--text-3); }
 
-/* 选中态：功能卡 */
-.core-card { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center;
-  padding: 7% 11%; }
-.core-kicker { font-size: clamp(10px, 1.5vw, 12px); letter-spacing: 1px; margin: 0; }
-.core-value { font-size: clamp(16px, 3vw, 26px); font-weight: 600; line-height: 1.15; margin: 4px 0 0;
-  color: var(--text); font-variant-numeric: tabular-nums; }
-.core-sub { font-size: clamp(9px, 1.4vw, 11px); color: var(--text-3); margin: 2px 0 0; }
-.core-facts { list-style: none; margin: 8px 0 0; padding: 0; width: 100%;
-  display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; text-align: left; }
-.core-facts li { display: flex; flex-direction: column; padding-top: 3px; border-top: 1px solid var(--line);
-  font-size: clamp(8.5px, 1.2vw, 10.5px); color: var(--text-3); line-height: 1.35; }
-.core-facts b { font-size: clamp(10px, 1.7vw, 12px); color: var(--text); }
-.core-enter { display: none; margin: auto auto 0; padding: clamp(5px, .9vw, 7px) clamp(10px, 1.8vw, 14px);
-  border-radius: 999px; background: var(--primary); color: #fff; font-size: clamp(10px, 1.5vw, 12px);
-  font-weight: 600; min-height: 44px; line-height: 1.2; }
-.core-enter:hover { background: var(--primary-strong); color: #fff; text-decoration: none; }
-.core-note { position: absolute; bottom: 6%; left: 0; right: 0; font-size: 11px; color: var(--text-3); margin: 0; }
-
-/* 状态行 */
-.dial-status { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 14px 0 0;
-  color: var(--text-3); font-size: 13px; min-height: 22px; }
-.dial-status .pill { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
-.dial-status .s { display: none; }
-.dial-hint { margin: 6px 0 0; font-size: 12px; color: var(--text-3); line-height: 1.6; text-align: center; }
-.chronos-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;
-  width: 100%; max-width: 470px; margin-top: 18px; }
-
-/* 助手抽屉 */
-.dial-backdrop { position: fixed; inset: 0; background: rgba(14, 31, 42, .38);
-  opacity: 0; pointer-events: none; transition: opacity .2s ease; z-index: 20; }
-.dial-backdrop label { position: absolute; inset: 0; }
-.dial-sheet { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 28px); z-index: 21;
-  width: min(92vw, 560px); background: var(--surface); border: 1px solid var(--line-strong);
-  border-radius: 18px; padding: 16px 18px; box-shadow: var(--shadow-2);
-  opacity: 0; pointer-events: none; transition: opacity .24s ease, transform .24s cubic-bezier(.22, 1, .36, 1); }
-.sheet-head { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; }
-.sheet-orb { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
-  background: radial-gradient(circle at 34% 28%, #9df3e4, #3ED3C0 60%, #11897a); }
-.sheet-orb svg { width: 15px; height: 15px; color: #04201b; }
-.sheet-head b { font-size: 14px; }
-.sheet-close { margin-left: auto; color: var(--text-3); font-size: 20px; cursor: pointer;
-  padding: 6px 10px; min-height: 44px; display: inline-flex; align-items: center; }
-.sheet-note { font-size: 12px; color: var(--text-2); margin: 0 0 10px; }
-.sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.sheet-actions .chip { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line-strong);
-  color: var(--primary); font-size: 12.5px; background: var(--surface-2); }
-.sheet-actions .chip:hover { background: var(--primary-soft); text-decoration: none; }
-.sheet-foot { font-size: 11px; color: var(--text-3); margin: 10px 0 0; }
-
-/* 唤醒助手按钮：放在外环上，不放中心圆里（否则会被圆边裁掉） */
-.dial-mic { position: absolute; top: 4%; right: 6%; z-index: 8; width: 34px; height: 34px;
-  border-radius: 50%; border: 1px solid var(--line-strong); background: var(--surface);
-  color: var(--accent); display: none; place-items: center; cursor: pointer; }
-.dial-mic svg { width: 17px; height: 17px; }
-.dial-mic::after { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: 44px; height: 44px; border-radius: 50%; }
-
-/* ---------- 状态：闲置 ---------- */
-#sector-idle:checked ~ section .dial-orb { display: grid; }
-#sector-idle:checked ~ section .dial-needle { opacity: .3; }
-#sector-idle:checked ~ section .dial-status .s-idle { display: inline; }
-#sector-idle:checked ~ section .core-note { display: block; }
-
-/* ---------- 状态：选中某个刻度 ---------- */
-#sector-sleep:checked ~ section .dial-needle,
-#sector-trends:checked ~ section .dial-needle,
-#sector-training:checked ~ section .dial-needle,
-#sector-alerts:checked ~ section .dial-needle,
-#sector-reports:checked ~ section .dial-needle,
-#sector-settings:checked ~ section .dial-needle { opacity: 1; }
-
-#sector-sleep:checked ~ section .dial-needle { transform: rotate(0deg); }
-#sector-trends:checked ~ section .dial-needle { transform: rotate(60deg); }
-#sector-training:checked ~ section .dial-needle { transform: rotate(120deg); }
-#sector-alerts:checked ~ section .dial-needle { transform: rotate(180deg); }
-#sector-reports:checked ~ section .dial-needle { transform: rotate(240deg); }
-#sector-settings:checked ~ section .dial-needle { transform: rotate(300deg); }
-
-#sector-sleep:checked ~ section .dial-arc { opacity: 1; transform: rotate(0deg); --c: #7C9CFF; }
-#sector-trends:checked ~ section .dial-arc { opacity: 1; transform: rotate(60deg); --c: #3ED3C0; }
-#sector-training:checked ~ section .dial-arc { opacity: 1; transform: rotate(120deg); --c: #F2B04C; }
-#sector-alerts:checked ~ section .dial-arc { opacity: 1; transform: rotate(180deg); --c: #F2799B; }
-#sector-reports:checked ~ section .dial-arc { opacity: 1; transform: rotate(240deg); --c: #B39DFF; }
-#sector-settings:checked ~ section .dial-arc { opacity: 1; transform: rotate(300deg); --c: #9FB6C4; }
-
-/* 中心放大到 72% 让位给功能卡 */
-#sector-sleep:checked ~ section .dial-core,
-#sector-trends:checked ~ section .dial-core,
-#sector-training:checked ~ section .dial-core,
-#sector-alerts:checked ~ section .dial-core,
-#sector-reports:checked ~ section .dial-core,
-#sector-settings:checked ~ section .dial-core { width: 72%; }
-
-/* 细分刻度淡出 */
-#sector-sleep:checked ~ section .tick.minor,
-#sector-trends:checked ~ section .tick.minor,
-#sector-training:checked ~ section .tick.minor,
-#sector-alerts:checked ~ section .tick.minor,
-#sector-reports:checked ~ section .tick.minor,
-#sector-settings:checked ~ section .tick.minor { opacity: 0; }
-
-/* 其余标签缩成小圆环 */
-#sector-sleep:checked ~ section .dial-fbtn,
-#sector-trends:checked ~ section .dial-fbtn,
-#sector-training:checked ~ section .dial-fbtn,
-#sector-alerts:checked ~ section .dial-fbtn,
-#sector-reports:checked ~ section .dial-fbtn,
-#sector-settings:checked ~ section .dial-fbtn {
-  width: 26px; height: 26px; padding: 0; justify-content: center; overflow: visible;
-  border-color: var(--c); background: var(--surface);
+/* 环上的流动高光：整体缓慢旋转，裁在圆里所以不会撑出包围盒 */
+.orbit-sheen { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; z-index: 1; }
+.orbit-sheen::before {
+  content: ""; position: absolute; inset: -30%;
+  background: conic-gradient(from 0deg,
+    transparent 0deg, transparent 58%,
+    rgba(120, 180, 255, .10) 70%, rgba(140, 220, 235, .16) 76%,
+    rgba(120, 180, 255, .06) 82%, transparent 90%);
 }
-#sector-sleep:checked ~ section .dial-fbtn span,
-#sector-trends:checked ~ section .dial-fbtn span,
-#sector-training:checked ~ section .dial-fbtn span,
-#sector-alerts:checked ~ section .dial-fbtn span,
-#sector-reports:checked ~ section .dial-fbtn span,
-#sector-settings:checked ~ section .dial-fbtn span { display: none; }
 
-#sector-sleep:checked ~ section .dial-fbtn[for="sector-sleep"],
-#sector-trends:checked ~ section .dial-fbtn[for="sector-trends"],
-#sector-training:checked ~ section .dial-fbtn[for="sector-training"],
-#sector-alerts:checked ~ section .dial-fbtn[for="sector-alerts"],
-#sector-reports:checked ~ section .dial-fbtn[for="sector-reports"],
-#sector-settings:checked ~ section .dial-fbtn[for="sector-settings"] {
-  width: auto; height: auto; padding: 7px 12px; border-radius: 999px;
-  background: var(--c); border-color: var(--c); color: #fff; font-weight: 600;
+/* 同心圆：外圈边界、模块轨道、核心外沿 */
+.orbit-rings { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.orbit-rings i { position: absolute; border-radius: 50%; }
+.orbit-rings i:nth-child(1) {
+  inset: 1.5%; border: 1px solid rgba(126, 162, 200, .24);
+  box-shadow: 0 0 60px -20px rgba(90, 150, 240, .55), inset 0 0 50px -26px rgba(90, 150, 240, .5);
 }
-#sector-sleep:checked ~ section .dial-fbtn[for="sector-sleep"] span,
-#sector-trends:checked ~ section .dial-fbtn[for="sector-trends"] span,
-#sector-training:checked ~ section .dial-fbtn[for="sector-training"] span,
-#sector-alerts:checked ~ section .dial-fbtn[for="sector-alerts"] span,
-#sector-reports:checked ~ section .dial-fbtn[for="sector-reports"] span,
-#sector-settings:checked ~ section .dial-fbtn[for="sector-settings"] span { display: inline; }
-#sector-sleep:checked ~ section .dial-fbtn[for="sector-sleep"] svg,
-#sector-trends:checked ~ section .dial-fbtn[for="sector-trends"] svg,
-#sector-training:checked ~ section .dial-fbtn[for="sector-training"] svg,
-#sector-alerts:checked ~ section .dial-fbtn[for="sector-alerts"] svg,
-#sector-reports:checked ~ section .dial-fbtn[for="sector-reports"] svg,
-#sector-settings:checked ~ section .dial-fbtn[for="sector-settings"] svg { color: #fff; }
-
-/* 预览态隐藏底部计数：信息在状态行与指标卡里都有，避免和「进入」重叠 */
-#sector-sleep:checked ~ section .core-note,
-#sector-trends:checked ~ section .core-note,
-#sector-training:checked ~ section .core-note,
-#sector-alerts:checked ~ section .core-note,
-#sector-reports:checked ~ section .core-note,
-#sector-settings:checked ~ section .core-note { display: none; }
-
-#sector-sleep:checked ~ section .core-card[data-sector="sleep"],
-#sector-trends:checked ~ section .core-card[data-sector="trends"],
-#sector-training:checked ~ section .core-card[data-sector="training"],
-#sector-alerts:checked ~ section .core-card[data-sector="alerts"],
-#sector-reports:checked ~ section .core-card[data-sector="reports"],
-#sector-settings:checked ~ section .core-card[data-sector="settings"] { display: flex; }
-#sector-sleep:checked ~ section .core-card .core-enter,
-#sector-trends:checked ~ section .core-card .core-enter,
-#sector-training:checked ~ section .core-card .core-enter,
-#sector-alerts:checked ~ section .core-card .core-enter,
-#sector-reports:checked ~ section .core-card .core-enter,
-#sector-settings:checked ~ section .core-card .core-enter { display: inline-flex; align-items: center; }
-
-#sector-sleep:checked ~ section .dial-status .s-preview,
-#sector-trends:checked ~ section .dial-status .s-preview,
-#sector-training:checked ~ section .dial-status .s-preview,
-#sector-alerts:checked ~ section .dial-status .s-preview,
-#sector-reports:checked ~ section .dial-status .s-preview,
-#sector-settings:checked ~ section .dial-status .s-preview { display: inline; }
-
-#sector-sleep:checked ~ section .dial-mic,
-#sector-trends:checked ~ section .dial-mic,
-#sector-training:checked ~ section .dial-mic,
-#sector-alerts:checked ~ section .dial-mic,
-#sector-reports:checked ~ section .dial-mic,
-#sector-settings:checked ~ section .dial-mic { display: grid; }
-
-/* 焦点环画在标签上（radio 是隐藏的） */
-#sector-sleep:focus-visible ~ section .dial-fbtn[for="sector-sleep"],
-#sector-trends:focus-visible ~ section .dial-fbtn[for="sector-trends"],
-#sector-training:focus-visible ~ section .dial-fbtn[for="sector-training"],
-#sector-alerts:focus-visible ~ section .dial-fbtn[for="sector-alerts"],
-#sector-reports:focus-visible ~ section .dial-fbtn[for="sector-reports"],
-#sector-settings:focus-visible ~ section .dial-fbtn[for="sector-settings"],
-#sector-assistant:focus-visible ~ section .dial-orb,
-#sector-idle:focus-visible ~ section .dial-orb { box-shadow: var(--focus-ring); }
-
-/* ---------- 状态：助手 ---------- */
-#sector-assistant:checked ~ section .dial-status .s-asst { display: inline; }
-#sector-assistant:checked ~ .dial-backdrop { opacity: 1; pointer-events: auto; }
-#sector-assistant:checked ~ .dial-sheet { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
-
-@media (max-width: 767px) {
-  .chronos-tiles { grid-template-columns: 1fr; }
-  .core-facts { grid-template-columns: 1fr; }
+.orbit-rings i:nth-child(2) {
+  /* 正好穿过模块圆点圆心（36.5%），读作"这些模块在一条轨道上"，
+     标签落在轨道外侧，不会被虚线划穿 */
+  inset: 13.5%; border: 1px dashed rgba(126, 162, 200, .16);
 }
+.orbit-rings i:nth-child(3) {
+  inset: 27%; border: 1px solid rgba(126, 162, 200, .10);
+  box-shadow: inset 0 0 40px rgba(60, 120, 220, .10);
+}
+
+.orbit-ticks { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.orbit-ticks .tick {
+  position: absolute; left: calc(50% - .5px); top: calc(50% - 3px);
+  width: 1px; height: 6px; border-radius: 1px;
+  background: rgba(150, 185, 220, .28);
+  transform-origin: 50% 50%;
+  transform: rotate(var(--a)) translateY(calc(var(--size) * -.478));
+  transition: opacity .4s ease;
+}
+.orbit-ticks .tick.minor { height: 3px; background: rgba(150, 185, 220, .22); }
+
+/* 当前模块的高亮弧（60° 段），随 --deg 一起转 */
+.orbit-arc {
+  position: absolute; inset: 0; pointer-events: none; z-index: 2;
+  transition: transform .62s cubic-bezier(.22, .9, .24, 1), opacity .35s ease;
+  opacity: 0;
+}
+.orbit-arc svg { width: 100%; height: 100%; transform: rotate(calc(var(--deg) - 120deg)); }
+.orbit-arc circle {
+  fill: none; stroke: var(--mod, var(--primary-strong));
+  stroke-width: 2; stroke-linecap: round;
+  stroke-dasharray: 16.3 100;
+  filter: drop-shadow(0 0 6px var(--halo));
+}
+
+/* 指针：从中心指向当前模块，长度停在轨道内侧 */
+.needle {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+  z-index: 3; transform: rotate(var(--deg));
+  transition: transform .62s cubic-bezier(.22, .9, .24, 1), opacity .3s ease;
+  opacity: 0;
+}
+.needle i {
+  position: absolute; bottom: 0; left: -1px; width: 2px;
+  height: calc(var(--size) * .335); display: block; border-radius: 2px;
+  background: linear-gradient(to top, rgba(120, 175, 255, .04), rgba(160, 205, 255, .75));
+}
+.needle i::before {
+  content: ""; position: absolute; top: -5px; left: 50%; width: 9px; height: 9px;
+  transform: translateX(-50%); border-radius: 50%;
+  background: #DCEBFF;
+  box-shadow: 0 0 10px 2px rgba(150, 200, 255, .55), 0 0 26px 6px rgba(96, 160, 255, .22);
+}
+
+/* ---------------- 模块节点 ----------------
+   零尺寸锚点 + rotate/translate 摆位：图标始终正立，位置由 --a 决定。 */
+
+.ring-node {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+  z-index: 5; --on: 0; cursor: pointer;
+  transform: rotate(var(--a)) translateY(calc(var(--size) * -.365)) rotate(calc(var(--a) * -1));
+  transition: opacity .3s ease;
+  opacity: calc(.74 - .34 * var(--has, 0) + .26 * var(--on));
+}
+.ring-node:hover { opacity: 1; }
+
+.node-dot {
+  position: absolute; left: -23px; top: -23px; width: 46px; height: 46px;
+  border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 50% 30%, rgba(24, 40, 64, .94), rgba(9, 17, 30, .96));
+  border: 1px solid rgba(126, 162, 200, .26);
+  color: var(--text-2);
+  transform: scale(calc(1 + .06 * var(--on)));
+  transition: transform .3s cubic-bezier(.34, 1.4, .64, 1), border-color .25s ease, color .25s ease, box-shadow .3s ease;
+}
+.node-dot svg { width: 20px; height: 20px; }
+.node-dot::after {
+  /* 命中区兜底：圆点视觉 46px，这里保证 48px 以上 */
+  content: ""; position: absolute; left: 50%; top: 50%; width: 52px; height: 52px;
+  transform: translate(-50%, -50%); border-radius: 50%;
+}
+
+.node-text {
+  position: absolute; top: 33px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center;
+  white-space: nowrap; line-height: 1.32; pointer-events: none;
+}
+.node-label { font-size: 12.5px; color: var(--text-2); transition: color .25s ease; }
+.node-value {
+  font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums;
+  transition: color .25s ease;
+}
+
+/* 选中态：图标提起、描边点亮、局部光晕 —— 只有焦点才发光 */
+#sector-sleep:checked ~ .ring-stage .ring-node[for="sector-sleep"],
+#sector-recovery:checked ~ .ring-stage .ring-node[for="sector-recovery"],
+#sector-training:checked ~ .ring-stage .ring-node[for="sector-training"],
+#sector-reports:checked ~ .ring-stage .ring-node[for="sector-reports"],
+#sector-assistant:checked ~ .ring-stage .ring-node[for="sector-assistant"],
+#sector-trends:checked ~ .ring-stage .ring-node[for="sector-trends"] {
+  --on: 1;
+}
+#sector-sleep:checked ~ .ring-stage .ring-node[for="sector-sleep"] .node-dot,
+#sector-recovery:checked ~ .ring-stage .ring-node[for="sector-recovery"] .node-dot,
+#sector-training:checked ~ .ring-stage .ring-node[for="sector-training"] .node-dot,
+#sector-reports:checked ~ .ring-stage .ring-node[for="sector-reports"] .node-dot,
+#sector-assistant:checked ~ .ring-stage .ring-node[for="sector-assistant"] .node-dot,
+#sector-trends:checked ~ .ring-stage .ring-node[for="sector-trends"] .node-dot {
+  border-color: var(--mod);
+  color: #EAF4FF;
+  background: radial-gradient(circle at 50% 30%, rgba(46, 78, 124, .96), rgba(12, 22, 38, .98));
+  box-shadow: 0 0 0 1px var(--mod), 0 0 22px -2px var(--mod), 0 10px 26px rgba(2, 8, 18, .6);
+}
+#sector-sleep:checked ~ .ring-stage .ring-node[for="sector-sleep"] .node-label,
+#sector-recovery:checked ~ .ring-stage .ring-node[for="sector-recovery"] .node-label,
+#sector-training:checked ~ .ring-stage .ring-node[for="sector-training"] .node-label,
+#sector-reports:checked ~ .ring-stage .ring-node[for="sector-reports"] .node-label,
+#sector-assistant:checked ~ .ring-stage .ring-node[for="sector-assistant"] .node-label,
+#sector-trends:checked ~ .ring-stage .ring-node[for="sector-trends"] .node-label {
+  color: var(--text); font-weight: 500;
+}
+#sector-sleep:checked ~ .ring-stage .ring-node[for="sector-sleep"] .node-value,
+#sector-recovery:checked ~ .ring-stage .ring-node[for="sector-recovery"] .node-value,
+#sector-training:checked ~ .ring-stage .ring-node[for="sector-training"] .node-value,
+#sector-reports:checked ~ .ring-stage .ring-node[for="sector-reports"] .node-value,
+#sector-assistant:checked ~ .ring-stage .ring-node[for="sector-assistant"] .node-value,
+#sector-trends:checked ~ .ring-stage .ring-node[for="sector-trends"] .node-value {
+  color: var(--text-2);
+}
+
+/* 键盘焦点画在用户看得见的圆点上（radio 本身是隐藏的） */
+#sector-sleep:focus-visible ~ .ring-stage .ring-node[for="sector-sleep"] .node-dot,
+#sector-recovery:focus-visible ~ .ring-stage .ring-node[for="sector-recovery"] .node-dot,
+#sector-training:focus-visible ~ .ring-stage .ring-node[for="sector-training"] .node-dot,
+#sector-reports:focus-visible ~ .ring-stage .ring-node[for="sector-reports"] .node-dot,
+#sector-assistant:focus-visible ~ .ring-stage .ring-node[for="sector-assistant"] .node-dot,
+#sector-trends:focus-visible ~ .ring-stage .ring-node[for="sector-trends"] .node-dot,
+#sector-idle:focus-visible ~ .ring-stage .core {
+  box-shadow: var(--focus-ring);
+}
+
+/* ---------------- 中央状态核心 ---------------- */
+
+.core {
+  position: absolute; left: 50%; top: 50%; width: 44%; height: 44%;
+  transform: translate(-50%, -50%); border-radius: 50%;
+  z-index: 4; overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 22%, rgba(48, 82, 132, .55), rgba(14, 26, 44, .9) 58%, rgba(7, 13, 23, .97) 100%);
+  border: 1px solid rgba(140, 185, 235, .24);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .10),
+    inset 0 -22px 50px rgba(24, 70, 150, .22),
+    0 0 44px -6px rgba(60, 120, 220, .35);
+  backdrop-filter: blur(6px);
+}
+@supports not (aspect-ratio: 1) {
+  .core::before { content: ""; display: block; padding-bottom: 100%; }
+}
+
+/* 核心内壁的一圈光，单独呼吸，不带文字一起缩放（避免文字发虚） */
+.core::after {
+  content: ""; position: absolute; inset: 6%; border-radius: 50%;
+  /* 选中模块时，内侧这圈反光跟着模块色走；闲置时是中性蓝 */
+  border: 1px solid var(--mod, rgba(120, 180, 255, .16));
+  opacity: .55;
+  pointer-events: none;
+}
+
+.core-card {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; padding: 0 11%; text-align: center;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translateY(6px) scale(.98);
+  transition: opacity .32s ease, transform .42s cubic-bezier(.16, 1, .3, 1), visibility .32s;
+}
+.core-kicker {
+  margin: 0; font-size: clamp(9.5px, 1.1vw, 11px); letter-spacing: .18em;
+  color: var(--text-3); text-transform: none;
+}
+.core-value {
+  margin: 4px 0 0; font-size: clamp(16px, 2.1vw, 25px); line-height: 1.2;
+  font-weight: 500; color: #F2F8FF; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.core-sub {
+  margin: 5px 0 0; font-size: clamp(10px, 1.2vw, 12.5px); color: var(--text-2);
+  line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.core-note {
+  margin: 7px 0 0; font-size: clamp(9px, 1vw, 10.5px); color: var(--text-3);
+  letter-spacing: .02em;
+}
+.core-card.is-empty .core-value { color: var(--text-2); }
+.core-card.is-partial .core-kicker { color: var(--warn); }
+
+/* 选中态：其余模块整体压暗（--has 放在 stage 上，所有节点共享） */
+#sector-sleep:checked ~ .ring-stage,
+#sector-recovery:checked ~ .ring-stage,
+#sector-training:checked ~ .ring-stage,
+#sector-reports:checked ~ .ring-stage,
+#sector-assistant:checked ~ .ring-stage,
+#sector-trends:checked ~ .ring-stage { --has: 1; }
+
+/* 显示哪一张核心卡 / 哪一张面板：一次只有一个 */
+#sector-idle:checked ~ .ring-stage .core-card[data-core="idle"],
+#sector-sleep:checked ~ .ring-stage .core-card[data-core="sleep"],
+#sector-recovery:checked ~ .ring-stage .core-card[data-core="recovery"],
+#sector-training:checked ~ .ring-stage .core-card[data-core="training"],
+#sector-reports:checked ~ .ring-stage .core-card[data-core="reports"],
+#sector-assistant:checked ~ .ring-stage .core-card[data-core="assistant"],
+#sector-trends:checked ~ .ring-stage .core-card[data-core="trends"],
+#sector-idle:checked ~ .ring-stage .panel[data-module="idle"],
+#sector-sleep:checked ~ .ring-stage .panel[data-module="sleep"],
+#sector-recovery:checked ~ .ring-stage .panel[data-module="recovery"],
+#sector-training:checked ~ .ring-stage .panel[data-module="training"],
+#sector-reports:checked ~ .ring-stage .panel[data-module="reports"],
+#sector-assistant:checked ~ .ring-stage .panel[data-module="assistant"],
+#sector-trends:checked ~ .ring-stage .panel[data-module="trends"] {
+  opacity: 1; visibility: visible; pointer-events: auto; transform: none;
+}
+
+/* 指针角度：只有选中模块时才出现（闲置态是"待探索"，不假装指了什么） */
+#sector-sleep:checked ~ .ring-stage { --deg: 0deg; }
+#sector-recovery:checked ~ .ring-stage { --deg: 60deg; }
+#sector-training:checked ~ .ring-stage { --deg: 120deg; }
+#sector-reports:checked ~ .ring-stage { --deg: 180deg; }
+#sector-assistant:checked ~ .ring-stage { --deg: 240deg; }
+#sector-trends:checked ~ .ring-stage { --deg: 300deg; }
+#sector-sleep:checked ~ .ring-stage .needle,
+#sector-recovery:checked ~ .ring-stage .needle,
+#sector-training:checked ~ .ring-stage .needle,
+#sector-reports:checked ~ .ring-stage .needle,
+#sector-assistant:checked ~ .ring-stage .needle,
+#sector-trends:checked ~ .ring-stage .needle { opacity: 1; }
+#sector-sleep:checked ~ .ring-stage .orbit-arc,
+#sector-recovery:checked ~ .ring-stage .orbit-arc,
+#sector-training:checked ~ .ring-stage .orbit-arc,
+#sector-reports:checked ~ .ring-stage .orbit-arc,
+#sector-assistant:checked ~ .ring-stage .orbit-arc,
+#sector-trends:checked ~ .ring-stage .orbit-arc { opacity: 1; }
+
+/* 各模块自己的角度 → 让指针、弧、核心、面板共用同一个 --mod */
+#sector-sleep:checked ~ .ring-stage { --mod: var(--c-sleep); }
+#sector-recovery:checked ~ .ring-stage { --mod: var(--c-recovery); }
+#sector-training:checked ~ .ring-stage { --mod: var(--c-training); }
+#sector-reports:checked ~ .ring-stage { --mod: var(--c-reports); }
+#sector-assistant:checked ~ .ring-stage { --mod: var(--c-assistant); }
+#sector-trends:checked ~ .ring-stage { --mod: var(--c-trends); }
+
+/* ---------------- 面板 ---------------- */
+
+.panel-stage {
+  position: relative;
+  min-width: 0;
+  height: min(70vh, 640px);
+}
+
+.panel {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  padding: 18px 18px 16px;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(19, 32, 51, .82) 0%, rgba(9, 17, 29, .86) 100%);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--shadow-glow), inset 0 1px 0 rgba(255, 255, 255, .06);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translateY(14px);
+  transition: opacity .3s ease, transform .46s cubic-bezier(.16, 1, .3, 1), visibility .3s;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(126, 162, 200, .3) transparent;
+}
+.panel::-webkit-scrollbar { width: 6px; }
+.panel::-webkit-scrollbar-thumb { background: rgba(126, 162, 200, .26); border-radius: 3px; }
+
+.panel-head { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 10px; flex: none; }
+.panel-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding-right: 3px; scrollbar-width: thin;
+  scrollbar-color: rgba(126, 162, 200, .3) transparent;
+}
+.panel-body::-webkit-scrollbar { width: 6px; }
+.panel-body::-webkit-scrollbar-thumb { background: rgba(126, 162, 200, .26); border-radius: 3px; }
+.panel-icon {
+  flex: none; width: 34px; height: 34px; border-radius: 10px;
+  display: grid; place-items: center; color: var(--mod, var(--primary-strong));
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid var(--line-strong);
+}
+.panel-icon svg { width: 18px; height: 18px; }
+.panel-head h2 { margin: 0; font-size: 15.5px; font-weight: 500; letter-spacing: -.01em; }
+.panel-kicker { margin: 2px 0 0; font-size: 11.5px; color: var(--text-3); }
+
+.panel-lead {
+  margin: 0 0 12px; font-size: 13.5px; line-height: 1.72; color: var(--text);
+}
+.panel.is-empty .panel-lead { color: var(--text-2); }
+
+.panel-facts {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px; margin: 0 0 12px; padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+}
+.panel-fact { min-width: 0; }
+.panel-fact dt { font-size: 11.5px; color: var(--text-3); margin-bottom: 1px; }
+.panel-fact dd {
+  margin: 0; font-size: 14.5px; color: var(--text); font-weight: 500;
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.panel-fact .fact-hint {
+  display: block; margin-top: 1px; font-size: 11px; font-weight: 400; color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.panel-fact.is-wide { grid-column: 1 / -1; }
+
+.panel-chart { margin: 0 0 10px; }
+.panel-chart figcaption { margin-top: 4px; font-size: 11px; color: var(--text-3); line-height: 1.55; }
+
+/* 趋势面板：一行一个指标 + 一张迷你图（不把量纲不同的指标叠一张图） */
+.spark-list { display: grid; gap: 2px; margin: 0 0 10px; padding: 0; }
+.spark-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 10px; align-items: center;
+  padding: 9px 8px; border-radius: 10px; border: 1px solid transparent;
+  color: inherit;
+}
+.spark-row:hover, .spark-row:focus-visible {
+  background: rgba(255, 255, 255, .045); border-color: var(--line); text-decoration: none;
+}
+.spark-label { font-size: 13px; color: var(--text); }
+.spark-meta { display: block; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.spark-value { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.spark { display: block; width: 104px; height: 30px; margin-top: 3px; }
+
+.panel-notes { margin: auto 0 0; padding-top: 10px; }
+.panel-note {
+  margin: 0 0 4px; font-size: 11.5px; line-height: 1.6; color: var(--text-3);
+  padding-left: 11px; position: relative;
+}
+.panel-note::before {
+  content: ""; position: absolute; left: 0; top: .58em; width: 3px; height: 3px;
+  border-radius: 50%; background: var(--text-3); opacity: .7;
+}
+
+.panel-actions {
+  display: flex; gap: 9px; flex-wrap: wrap; align-items: center;
+  flex: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
+}
+.panel-actions .btn { min-height: 40px; font-size: 13px; }
+.panel-actions .btn.ghost {
+  background: transparent; border-color: var(--line-strong); color: var(--text-2);
+}
+.panel-actions .btn.ghost:hover { color: var(--text); border-color: var(--text-3); }
+
+.panel-empty { margin: 2px 0 0; padding: 14px 14px 16px; border-radius: 12px;
+  border: 1px dashed var(--line-strong); background: rgba(255, 255, 255, .022); }
+.panel-empty b { display: block; font-size: 13.5px; margin-bottom: 4px; }
+.panel-empty p { margin: 0; font-size: 12.5px; color: var(--text-2); line-height: 1.65; }
+
+/* 闲置态面板：复用今日建议卡，但去掉卡片的"另一层卡"观感 */
+.panel .guidance-card {
+  background: none; border: 0; border-left: 0; box-shadow: none;
+  padding: 0; margin: 0;
+}
+.panel .guidance-head h2 { font-size: 17.5px; line-height: 1.42; }
+.panel .guidance-facts li { grid-template-columns: minmax(80px, 120px) minmax(0, 1fr); }
+.panel .guidance-facts .fact-coverage { grid-column: 2; }
+.panel .guidance-actions .btn { min-height: 40px; }
+
+/* ---------------- 底部：状态条与普通入口 ---------------- */
+
+.ring-foot { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; }
+.ring-status {
+  display: flex; gap: 10px 18px; flex-wrap: wrap; align-items: center;
+  padding: 11px 14px; border-radius: var(--r-card);
+  border: 1px solid var(--line); background: rgba(255, 255, 255, .028);
+  font-size: 12.5px; color: var(--text-3);
+}
+.ring-status a { color: var(--text-2); }
+.ring-status a:hover { color: var(--text); }
+.ring-status b { color: var(--text); font-weight: 500; }
+.ring-status .warn b { color: var(--warn); }
+.ring-status form { margin: 0; }
+/* 一键确认：与状态条同高的小按钮，不做成第二颗主按钮抢焦点 */
+.ring-confirm {
+  min-height: 30px; padding: 3px 11px; font-size: 12px;
+  background: rgba(224, 163, 74, .16); border-color: rgba(224, 163, 74, .5);
+  color: var(--warn);
+}
+.ring-confirm:hover { background: rgba(224, 163, 74, .26); filter: none; }
+.ring-chip-hint { font-size: 12px; color: var(--text-3); }
+.ring-chip-hint:hover { color: var(--text-2); }
+
+.ring-more {
+  border: 1px solid var(--line); border-radius: var(--r-card);
+  background: rgba(255, 255, 255, .022); padding: 0 14px;
+}
+.ring-more > summary {
+  display: flex; align-items: center; min-height: 46px;
+  font-size: 12.5px; color: var(--text-3); list-style: none; cursor: pointer;
+}
+.ring-more > summary::-webkit-details-marker { display: none; }
+.ring-more > summary::before { content: "＋ "; margin-right: 6px; }
+.ring-more[open] > summary::before { content: "－ "; }
+.ring-more .ring-more-body { padding: 0 0 14px; }
+.ring-more .note { margin-bottom: 10px; }
+
+.ring-hint {
+  margin: 12px 0 0; text-align: center; font-size: 12px; color: var(--text-3);
+}
+.ring-hint kbd {
+  font-family: var(--font-num); font-size: 11px; padding: 1px 5px; border-radius: 4px;
+  border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .05); color: var(--text-2);
+}
+
+/* ---------------- 动效 ---------------- */
 
 @media (prefers-reduced-motion: no-preference) {
-  .dial-needle { transition: transform .45s cubic-bezier(.34, 1.56, .64, 1), opacity .3s ease; }
-  .dial-arc { transition: transform .45s cubic-bezier(.34, 1.56, .64, 1), opacity .3s ease; }
-  .dial-core { transition: width .45s cubic-bezier(.34, 1.56, .64, 1); }
-  .dial-fbtn { transition: width .25s ease, height .25s ease, background .18s ease, color .18s ease; }
-  .dial-orb .orb-rings i { animation: orbPulse 3.2s ease-out infinite; }
-  .dial-orb .orb-rings i:nth-child(2) { animation-delay: 1.1s; }
-  .dial-orb .orb-rings i:nth-child(3) { animation-delay: 2.2s; }
-}
-@keyframes orbPulse {
-  0% { transform: scale(.6); opacity: 0; }
-  30% { opacity: .45; }
-  100% { transform: scale(1.12); opacity: 0; }
+  .orbit-aura { animation: coreBreathe 8s ease-in-out infinite; }
+  .orbit-sheen::before { animation: ringSheen 44s linear infinite; }
+  .core::after { animation: coreRing 8s ease-in-out infinite; }
+  .ring-node { transition: opacity .3s ease; }
+  .ring-node .node-dot { will-change: transform; }
 }
 
+@keyframes coreBreathe {
+  0%, 100% { transform: scale(.97); opacity: .82; }
+  50% { transform: scale(1.04); opacity: 1; }
+}
+@keyframes coreRing {
+  0%, 100% { opacity: .35; transform: scale(.99); }
+  50% { opacity: .7; transform: scale(1.015); }
+}
+@keyframes ringSheen {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 拖拽时不要过渡，指针要跟手 */
+.ring-stage.is-dragging .needle,
+.ring-stage.is-dragging .orbit-arc { transition: none; }
+.orbit.has-drag { touch-action: pan-y; }
+
 @media (prefers-reduced-motion: reduce) {
-  .dial-needle, .dial-arc, .dial-core, .dial-fbtn { transition: none; }
-  .dial-orb .orb-rings i { animation: none; opacity: .2; }
+  .orbit-aura, .orbit-sheen::before, .core::after { animation: none; }
+  .needle, .orbit-arc, .core-card, .panel, .ring-node, .ring-node .node-dot { transition: none; }
+}
+
+/* ---------------- 响应式 ---------------- */
+
+/* 平板横屏（1024–1279）：环略小，面板变窄，仍并排 */
+@media (max-width: 1279px) {
+  .ring-stage { grid-template-columns: minmax(0, 1fr) minmax(300px, 348px); gap: 22px; }
+  .orbit { --size: clamp(270px, min(46vw, 56vh), 440px); }
+  .panel-stage { height: min(72vh, 600px); }
+  .page-ring .content { padding: 18px 22px 26px; }
+}
+
+/* 竖屏 / 手机：环在上、面板在下，一次只占一屏 */
+@media (max-width: 1023px) {
+  .ring-stage { grid-template-columns: 1fr; gap: 20px; }
+  .panel-stage { height: auto; min-height: 0; }
+  .panel {
+    position: static; display: none;
+    transform: none; transition: none;
+    backdrop-filter: none;
+  }
+  #sector-idle:checked ~ .ring-stage .panel[data-module="idle"],
+  #sector-sleep:checked ~ .ring-stage .panel[data-module="sleep"],
+  #sector-recovery:checked ~ .ring-stage .panel[data-module="recovery"],
+  #sector-training:checked ~ .ring-stage .panel[data-module="training"],
+  #sector-reports:checked ~ .ring-stage .panel[data-module="reports"],
+  #sector-assistant:checked ~ .ring-stage .panel[data-module="assistant"],
+  #sector-trends:checked ~ .ring-stage .panel[data-module="trends"] {
+    display: flex; opacity: 1; visibility: visible; pointer-events: auto;
+  }
+  .orbit { --size: clamp(280px, min(78vw, 60vh), 460px); }
+}
+
+@media (max-width: 767px) {
+  .orbit { --size: min(84vw, 380px); }
+  .node-dot { left: -20px; top: -20px; width: 40px; height: 40px; }
+  .node-dot svg { width: 17px; height: 17px; }
+  .node-text { top: 26px; }
+  .node-label { font-size: 11.5px; }
+  .node-value { font-size: 10px; }
+  .ring-node:not([for="sector-idle"]) .node-value { display: none; }
+  #sector-sleep:checked ~ .ring-stage .ring-node[for="sector-sleep"] .node-value,
+  #sector-recovery:checked ~ .ring-stage .ring-node[for="sector-recovery"] .node-value,
+  #sector-training:checked ~ .ring-stage .ring-node[for="sector-training"] .node-value,
+  #sector-reports:checked ~ .ring-stage .ring-node[for="sector-reports"] .node-value,
+  #sector-assistant:checked ~ .ring-stage .ring-node[for="sector-assistant"] .node-value,
+  #sector-trends:checked ~ .ring-stage .ring-node[for="sector-trends"] .node-value {
+    display: block;
+  }
+  .core { width: 46%; height: 46%; }
+  .core-value { font-size: clamp(16px, 4.6vw, 22px); }
+  .core-sub { font-size: 10.5px; -webkit-line-clamp: 2; }
+  .panel { padding: 15px 14px 14px; border-radius: 14px; }
+  .panel-facts { grid-template-columns: 1fr; }
+  .panel-actions .btn { flex: 1 1 auto; }
+  .ring-status { font-size: 12px; }
+}
+
+/* 短屏横屏（如平板横屏但浏览器高度被占用）：优先保证环完整可见 */
+@media (max-height: 620px) and (min-width: 1024px) {
+  .orbit { --size: min(52vh, 420px); }
+  .panel-stage { height: min(58vh, 460px); }
 }

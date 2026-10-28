@@ -122,7 +122,7 @@ python -m venv .venv
 | 页面 | 能做什么 |
 |---|---|
 | `/` | 今日建议卡（依据/为什么/边界）、指标卡、睡眠图、快速训练记录、待处理、最近记录 |
-| `/records` | 按指标/状态筛选；确认、驳回、改值、删除 |
+| `/records` | 按指标/状态筛选；**按批次一键确认**、逐条确认/驳回/改值/删除 |
 | `/training` | 记训练、记当天状态（精力/疲劳/酸痛）、训练偏好、删除；与首页同一张建议卡 |
 | `/imports` | 上传 JSON/CSV/TSV → 预览 → 写入；批次确认全部 / 撤销 |
 | `/conflicts` | 新旧值对照，选择「保留已有」或「采用新值」 |
@@ -309,7 +309,10 @@ src/health_agent/
 - `docs/08-workbench-overview.md` — **工作台总览**（模块 / 布局 / 数据来源 / 交互 / 配置）
 - `docs/09-training-and-guidance.md` — **训练日志与每日建议使用说明**（命令 / JSON 契约 / 边界）
 - `docs/10-tablet-manual-check.md` — **平板端手动验证清单**（局域网、密码、22 项验收）
-- `docs/11-chronos-dial-concept.md` — **Chronos 拨盘设计**（Lumen V4 取舍表；生产实现见 T11 报告）
+- `docs/11-chronos-dial-concept.md` — Chronos 拨盘设计（历史；已被星环首页取代）
+- `docs/12-online-workbench.md` — 在线健康台（只读镜像 + 快速记一条）
+- `docs/13-star-ring-ui.md` — **星环首页设计与实现**（结构 / 交互 / 动效 / 空态 / 限制）
+- `docs/14-huawei-export-import.md` — **华为导出包导入**（AES 解密 / 指标映射 / 聚合口径 / 校验）
 
 ## 备份与恢复
 

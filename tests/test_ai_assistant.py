@@ -454,3 +454,66 @@ def test_answer_card_reaches_the_prompt(conn, tmp_path):
     payload = captured["messages"][-1]["content"]
     assert "本次聚焦" in payload
     assert "344" in payload
+
+
+# ---------------- 训练类问题：必须带上「今日建议」 ----------------
+
+def _seed_recent_sleep(conn, *, days: int = 7, minutes: float = 420.0) -> None:
+    """把最近 N 天的夜间睡眠补成已确认，让规则引擎能给出"常规训练"。"""
+    from datetime import date, timedelta
+
+    today = date.today()
+    for offset in range(days):
+        day = (today - timedelta(days=offset)).isoformat()
+        insert_record(
+            conn,
+            make_record(record_date=day, value=minutes),
+            status="confirmed",
+        )
+
+
+def test_context_carries_todays_guidance(conn):
+    """问"今天练什么"只能靠「今日建议」回答——指标摘要里没有"该不该练"。"""
+    _seed_recent_sleep(conn)
+    context = build_context(conn)
+
+    advice = context["今日建议"]
+    assert advice["类别"] == "regular_training"
+    assert advice["结论"]
+    assert advice["依据"], "建议必须带依据，否则模型只能空口说"
+    assert "近 14 天次数" in context["最近训练"]
+    assert context["今日主观状态"]
+
+
+def test_guidance_is_reflected_in_local_answer(conn):
+    """没配 AI 时也要能回答"今天练什么"，而不是只会说数据不足。"""
+    _seed_recent_sleep(conn)
+    settings = load_settings({}, project_root=Path("__no_env__"))
+    answer = ask(conn, "我今天想要健身适合练什么", settings=settings)
+
+    assert answer.source == SOURCE_LOCAL
+    assert "可以按计划训练" in answer.text
+    assert "今日建议" in answer.text or "常规训练" in answer.text
+
+
+def test_workout_question_resolves_to_training_page(conn):
+    """口语里的"健身/练什么"要能命中训练页，否则连跳转都不给。"""
+    from health_agent.ai_client.tools import resolve
+
+    _seed_recent_sleep(conn)
+    _card, refs = resolve(conn, "我今天想要健身适合练什么")
+    assert any(ref.get("href") == "/training" for ref in refs)
+
+
+def test_prompt_tells_model_to_ignore_stale_history():
+    """历史里的旧回答可能是在没数据时说的；模型必须按本次摘要纠正，而不是沿用旧结论。"""
+    from health_agent.ai_client.assistant import SYSTEM_PROMPT
+
+    assert "以本次摘要为准" in SYSTEM_PROMPT
+
+
+def test_prompt_tells_model_to_ignore_stale_history():
+    """历史里的旧回答可能是在没数据时说的；模型必须按本次摘要纠正，而不是沿用旧结论。"""
+    from health_agent.ai_client.assistant import SYSTEM_PROMPT
+
+    assert "以本次摘要为准" in SYSTEM_PROMPT

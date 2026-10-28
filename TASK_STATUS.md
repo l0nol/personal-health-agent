@@ -13,6 +13,7 @@
 | T06 | 最终回归与交付检查 | 待审核 | `reports/T06_FINAL_ACCEPTANCE_REPORT.md` | 结论 A（可以交付）；376 passed / 浏览器 14/14 / 打包解压自检 376；含追加要求"模块化 + UI 可美化接口" |
 | 延伸 | 模块化与可美化接口（用户追加） | 待审核 | `docs/06-ui-extension-guide.md` | pages.py 注册表、context.py 视图模型、CSS 四层、base.html 扩展块、16 条守门测试 |
 | 延伸 | 界面内配置 AI 接口（用户追加） | 待审核 | `CHANGELOG_WORKBUDDY.md`（2026-10-21 条）/ `docs/02-runbook.md` §7.5 / `tests/test_ai_config.py` | 6 家预设 + 自定义 OpenAI 兼容端点；`.env` 原子写回、保存即生效不用重启；试连独立于保存；29 新测试；491 passed / 1 skipped |
+| 延伸 | 星环首页 UI 改造（用户追加，0.3.0） | 待审核 | `docs/13-star-ring-ui.md` / `reports/screens/`（本地截图） | 深色主题 + 中央状态核心 + 六模块环形导航 + 面板展开；默认首页改为星环，详细列表保留；560 passed / 1 skipped，浏览器 34/34 |
 
 ## AI 接口适配状态（2026-10-21）
 

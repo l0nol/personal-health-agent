@@ -1,25 +1,18 @@
-"""T05/T11 时钟模式：六刻度单选 + 中心预览 + 明确进入 + 降级与一致性。
+"""星环首页（`/` 与 `/chronos`）：结构、同口径、降级与安全。
 
-T11 把"六扇区环"换成"六刻度拨盘 + 中心助手"，结构变了，断言随之更新——
-不是放宽：仍然是 6 个单选刻度、6 张中心预览、每刻度一个「进入」、标签不是链接、
-减少动态时不动画、两模式同口径。
-
-覆盖任务书要求：
-- 环形导航可选择功能、中心预览、明确操作后进入详情（两步，不直接跳转）；
-- 常规导航替代（link-grid）+ 键盘路径（原生 radio 方向键）；
-- 支持触屏/鼠标（label 命中区 68px ≥ 44px）；
-- 减少动态效果（过渡仅在 no-preference 下启用）；
-- 环形数据与简洁模式同口径（NULL 显示“—”，不显示 0）；
-- 不造健康分数；无写操作；鉴权与既有页面一致。
+这些断言守住四件事，比较的是"行为没走回头路"，不是像素：
+1. 六个模块各有一张中心卡与一张展开面板，模块本身是 label 而不是链接
+   —— 点开是看摘要，不是"以为在看预览、结果已经离开页面"；
+2. 环上的数字与详细列表页同一个来源、同一套格式化（换皮不换数）；
+3. 没有脚本也能用：原生 radio + label + 方向键；减少动效时不播放过渡；
+4. 不造健康分、不造示例数据、不新增写接口。
 """
 
 from __future__ import annotations
 
 import re
 from datetime import date, timedelta
-from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
 from health_agent.config import load_settings
@@ -28,10 +21,9 @@ from health_agent.storage.lifecycle import confirm_record
 from health_agent.storage.repository import insert_record, seed_catalog
 from health_agent.ui.app import create_app
 from health_agent.ui.auth import hash_password
+from health_agent.ui.pages import RING_MODULES
 
 from conftest import make_record, read_css
-
-SECTOR_PAGES = ["/sleep", "/trends", "/training", "/alerts", "/reports", "/settings"]
 
 
 def _client(tmp_path, *, password_hash: str | None = None) -> TestClient:
@@ -56,80 +48,118 @@ def _seed_sleep(tmp_path, values: list[float]) -> None:
     conn.close()
 
 
-# ---------------- 结构：六扇区单选 + 中心预览 + 进入 ----------------
+def _detail_list(client: TestClient) -> str:
+    """切到详细列表模式并打开首页（对照用：同一份数据、同一个格式化）。"""
+    client.post("/settings/mode", data={"mode": "simple", "next_path": "/"}, follow_redirects=False)
+    body = client.get("/").text
+    client.post("/settings/mode", data={"mode": "chronos", "next_path": "/"}, follow_redirects=False)
+    return body
 
-def test_dial_has_six_radio_sectors_with_matching_labels(tmp_path):
+
+# ---------------- 结构：六模块 + 中心 + 面板 ----------------
+
+
+def test_ring_has_six_modules_at_sixty_degrees(tmp_path):
     with _client(tmp_path) as client:
-        body = client.get("/chronos").text
+        body = client.get("/").text
 
-    radios = re.findall(r'<input class="sector-input"[^>]*id="(sector-[a-z]+)"[^>]*data-angle', body)
-    labels = re.findall(r'<label class="dial-fbtn" for="(sector-[a-z]+)"', body)
-    assert len(radios) == 6
-    assert radios == labels  # 每个刻度 radio 都有对应 label，顺序一致
-    assert body.count('name="sector"') == 8  # 6 个刻度 + 闲置 + 助手，同一组单选
-    assert len(re.findall(r'<input class="sector-input"[^>]*checked', body)) == 1  # 默认只选中一个
+    angles = re.findall(r'class="ring-input"[^>]*data-angle="(\d+)"', body)
+    assert angles == ["0", "60", "120", "180", "240", "300"]
+    for module in RING_MODULES:
+        assert f'id="sector-{module.key}"' in body
+        assert f'for="sector-{module.key}"' in body
+    assert [m.key for m in RING_MODULES] == [
+        "sleep",
+        "recovery",
+        "training",
+        "reports",
+        "assistant",
+        "trends",
+    ]
 
 
-def test_center_has_preview_and_enter_link_per_sector(tmp_path):
+def test_default_state_is_idle_with_exactly_one_checked_radio(tmp_path):
     with _client(tmp_path) as client:
-        body = client.get("/chronos").text
+        body = client.get("/").text
 
-    panels = re.findall(r'class="core-card" data-sector="([a-z]+)"', body)
-    enters = re.findall(r'class="core-enter" href="([^"]+)"', body)
-    assert panels == ["sleep", "trends", "training", "alerts", "reports", "settings"]
-    assert enters == SECTOR_PAGES
+    assert body.count('class="ring-input"') == 7  # 6 个模块 + 闲置
+    assert len(re.findall(r'class="ring-input"[^>]*checked', body)) == 1
+    assert re.search(r'<input class="ring-input"[^>]*id="sector-idle"[^>]*checked', body)
 
 
-def test_sectors_are_labels_not_links(tmp_path):
-    """两步交互：扇区本身不跳转，避免"以为在看预览、结果已经离开页面"。"""
+def test_modules_are_labels_not_links(tmp_path):
+    """两步交互：模块本身不跳转，详情入口在面板里。"""
     with _client(tmp_path) as client:
-        body = client.get("/chronos").text
+        body = client.get("/").text
 
-    assert '<label class="dial-fbtn"' in body
-    assert body.count('class="dial-fbtn"') == 6
-    assert body.count('<a class="dial-fbtn"') == 0
-    # 明确入口只有每扇区一个「进入」链接
-    assert body.count('class="core-enter"') == 6
+    assert body.count('class="ring-node') == 6
+    assert body.count('<a class="ring-node') == 0
+    assert body.count('class="panel ') == 7  # 6 个模块 + 闲置时的今日建议
+    assert body.count('class="core-card') == 7
+
+
+def test_every_module_has_one_panel_and_one_core(tmp_path):
+    with _client(tmp_path) as client:
+        body = client.get("/").text
+
+    for module in RING_MODULES:
+        assert body.count(f'data-module="{module.key}"') == 1, module.key
+        assert body.count(f'data-core="{module.key}"') == 1, module.key
+        # 面板里的详情入口指向真实页面（查询串里的 & 会被模板转义成 &amp;）
+        escaped = module.href.replace("&", "&amp;")
+        assert f'href="{module.href}"' in body or f'href="{escaped}"' in body, module.key
+
+
+def test_query_param_preselects_module(tmp_path):
+    with _client(tmp_path) as client:
+        body = client.get("/chronos?s=training").text
+
+    assert re.search(r'<input class="ring-input"[^>]*id="sector-training"[^>]*checked', body)
+    assert not re.search(r'<input class="ring-input"[^>]*id="sector-idle"[^>]*checked', body)
+
+
+def test_unknown_module_falls_back_to_idle(tmp_path):
+    with _client(tmp_path) as client:
+        body = client.get("/chronos?s=not-a-module").text
+    assert re.search(r'<input class="ring-input"[^>]*id="sector-idle"[^>]*checked', body)
 
 
 def test_chronos_keeps_equivalent_normal_navigation(tmp_path):
     with _client(tmp_path) as client:
-        body = client.get("/chronos").text
+        body = client.get("/").text
 
     assert "普通入口" in body
-    for href in ["/", "/sleep", "/trends", "/reports", "/records", "/imports",
-                 "/conflicts", "/alerts", "/settings"]:
+    for href in ["/sleep", "/trends", "/reports", "/records", "/imports",
+                 "/conflicts", "/alerts", "/settings", "/training", "/assistant"]:
         assert f'href="{href}"' in body, href
-    # 键盘说明与减少动效说明必须在页面上
+    # 键盘路径与减少动效的说明必须在页面上，而不是只写在文档里
     assert "方向键" in body
     assert "减少动态效果" in body
     assert 'role="group"' in body
 
 
-# ---------------- 数据一致性：与简洁模式同口径 ----------------
+# ---------------- 数据一致性：与详细列表同口径 ----------------
 
-def test_center_preview_matches_simple_dashboard_values(tmp_path):
+
+def test_ring_values_match_detail_list(tmp_path):
     _seed_sleep(tmp_path, [400, 401, 402, 403, 404])
     with _client(tmp_path) as client:
-        dashboard = client.get("/").text
-        chronos = client.get("/chronos").text
+        ring = client.get("/").text
+        detail = _detail_list(client)
 
-    # 同一个数值、同一个格式化（format_number），两处必须一致；最新一天是 400 分钟
-    assert "6 小时 40 分" in dashboard
-    assert "6 小时 40 分" in chronos
-    assert "近 7 天有效 5/7 天" in dashboard
-    assert "近 7 天有效 5/7 天" in chronos
+    # 同一个数值、同一个格式化（format_number）；最新一天是 400 分钟
+    assert "6 小时 40 分" in ring
+    assert "6 小时 40 分" in detail
 
 
 def test_missing_value_is_dash_not_zero(tmp_path):
     with _client(tmp_path) as client:
-        body = client.get("/chronos").text
+        body = client.get("/").text
 
     assert "—" in body
-    assert "近 7 天无数据" in body
-    # 计数可以是真 0，但指标值不能把缺失写成 0
-    assert "0 分钟" not in body
-    assert "0 次/分" not in body
+    # 只禁止"把缺失写成 0"，不误伤"420 分钟"里的数字
+    assert re.search(r"(?<![\d.])0 分钟", body) is None
+    assert re.search(r"(?<![\d.])0 次/分", body) is None
 
 
 def test_unit_labels_are_correct(tmp_path):
@@ -151,14 +181,13 @@ def test_unit_labels_are_correct(tmp_path):
     conn.close()
 
     with _client(tmp_path) as client:
-        body = client.get("/chronos").text
+        body = client.get("/").text
 
     assert "次/分" in body
     assert "步" in body
 
 
-def test_pending_does_not_enter_chronos_preview(tmp_path):
-    """只有 pending 的指标，表盘预览仍是"无数据"。"""
+def test_pending_does_not_enter_ring(tmp_path):
     conn = init_db(tmp_path / "ui.db")
     seed_catalog(conn)
     for offset in range(3):
@@ -171,50 +200,48 @@ def test_pending_does_not_enter_chronos_preview(tmp_path):
     conn.close()
 
     with _client(tmp_path) as client:
-        body = client.get("/chronos").text
+        body = client.get("/").text
 
-    assert "近 7 天无数据" in body
     assert "6 小时 50 分" not in body
+    assert "暂无" in body
 
 
-def test_mode_switch_home_uses_same_dial_and_values(tmp_path):
+def test_home_and_chronos_use_one_assembler(tmp_path):
+    """`/` 与 `/chronos` 是同一条装配路径，不允许长出两套数字。"""
     _seed_sleep(tmp_path, [400, 401, 402])
     with _client(tmp_path) as client:
-        client.post("/settings/mode", data={"mode": "chronos", "next_path": "/"},
-                    follow_redirects=False)
         home = client.get("/").text
-        chronos = client.get("/chronos").text
+        page = client.get("/chronos").text
 
-    assert "表盘导航" in home
-    assert 'class="dial-fbtn"' in home
-    assert "6 小时 40 分" in home and "6 小时 40 分" in chronos
+    assert home.count('class="panel ') == page.count('class="panel ')
+    assert "6 小时 40 分" in home and "6 小时 40 分" in page
 
 
-# ---------------- 降级、性能与安全 ----------------
+# ---------------- 降级、动效与安全 ----------------
 
-def test_reduced_motion_only_animates_when_allowed():
+
+def test_reduced_motion_turns_off_ring_transitions():
     css = read_css()
-
-    block = re.search(
-        r"@media \(prefers-reduced-motion: no-preference\) \{(.*?)\n\}", css, re.S
-    ).group(1)
-    assert ".dial-needle { transition: transform" in block
-    # 过渡不允许出现在 media 查询之外（减少动态时必须是瞬时切换）
-    outside = css.replace(block, "")
-    assert ".dial-needle { transition" not in outside
+    block = re.search(r"@media \(prefers-reduced-motion: reduce\) \{(.*?)\n\}", css, re.S)
+    assert block is not None
+    inner = block.group(1)
+    for selector in (".needle", ".orbit-arc", ".core-card", ".panel", ".node-dot"):
+        assert selector in inner, selector
+    assert "transition: none" in inner
+    assert "animation: none" in inner
 
 
 def test_all_six_checked_states_have_css_rules():
     css = read_css()
-
-    for key in ("sleep", "trends", "training", "alerts", "reports", "settings"):
-        assert f"#sector-{key}:checked ~ section .dial-needle {{ transform: rotate" in css, key
-        assert f'#sector-{key}:checked ~ section .core-card[data-sector="{key}"]' in css, key
+    for module in RING_MODULES:
+        assert f"#sector-{module.key}:checked ~ .ring-stage {{ --deg: {module.idx * 60}deg; }}" in css, module.key
+        assert f'#sector-{module.key}:checked ~ .ring-stage .panel[data-module="{module.key}"]' in css, module.key
+        assert f'#sector-{module.key}:checked ~ .ring-stage .core-card[data-core="{module.key}"]' in css, module.key
 
 
 def test_no_fabricated_health_score_or_judgement(tmp_path):
     with _client(tmp_path) as client:
-        body = client.get("/chronos").text
+        body = client.get("/").text
 
     for word in ("健康分", "健康评分", "综合评分", "风险等级"):
         assert word not in body, word

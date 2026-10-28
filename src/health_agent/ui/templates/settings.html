@@ -6,11 +6,11 @@
 
 <section class="card">
   <h2>外观</h2>
-  <p class="muted">当前模式：{{ '时钟模式' if mode == 'chronos' else '简洁模式' }}。切换只影响首页与导航样式，不改任何数据。</p>
+  <p class="muted">当前模式：{{ '星环视图' if mode == 'chronos' else '详细列表' }}。切换只影响首页长什么样，不改任何数据。</p>
   <form method="post" action="/settings/mode" class="mode-switch">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <input type="hidden" name="next_path" value="/settings">
-    {% for value, label in [('simple', '简洁模式'), ('chronos', '时钟模式')] %}
+    {% for value, label in [('chronos', '星环视图'), ('simple', '详细列表')] %}
     <button class="mode-option {{ 'selected' if mode == value else '' }}" name="mode" value="{{ value }}">
       {{ label }}{% if mode == value %} · 当前{% endif %}
     </button>

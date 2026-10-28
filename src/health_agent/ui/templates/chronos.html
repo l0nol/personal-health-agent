@@ -1,216 +1,351 @@
 {% extends "base.html" %}
-{% set SIN6 = [0, 0.866, 0.866, 0, -0.866, -0.866] %}
-{% set COS6 = [1, 0.5, -0.5, -1, -0.5, 0.5] %}
-{% set SIN12 = [0, 0.5, 0.866, 1, 0.866, 0.5, 0, -0.5, -0.866, -1, -0.866, -0.5] %}
-{% set COS12 = [1, 0.866, 0.5, 0, -0.5, -0.866, -1, -0.866, -0.5, 0, 0.5, 0.866] %}
-{% set SINM = [0.259, 0.707, 0.966, 0.966, 0.707, 0.259, -0.259, -0.707, -0.966, -0.966, -0.707, -0.259] %}
-{% set COSM = [0.966, 0.707, 0.259, -0.259, -0.707, -0.966, -0.966, -0.707, -0.259, 0.259, 0.707, 0.966] %}
+{% from "_macros.html" import chart as render_chart, guidance_card %}
 {% set ICONS = {
-  'sleep': 'M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z',
-  'trends': 'M3 17l5-6 4 3 5-8 4 5',
-  'training': 'M4 9v6M20 9v6M7 7v10M17 7v10M7 12h10',
-  'alerts': 'M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6ZM10 20a2 2 0 0 0 4 0',
-  'reports': 'M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h6',
-  'settings': 'M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM19 12a7 7 0 0 0-.14-1.4l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2.4-1.4L14 3h-4l-.16 2.3a7 7 0 0 0-2.4 1.4l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12Z'
+  'sleep': 'M20 14.6A8.6 8.6 0 0 1 9.4 4a8.6 8.6 0 1 0 10.6 10.6Z',
+  'recovery': 'M12 20.2S4.8 15.4 4.8 10.6A3.9 3.9 0 0 1 12 7.9a3.9 3.9 0 0 1 7.2 2.7c0 4.8-7.2 9.6-7.2 9.6Z',
+  'training': 'M4 9.2v5.6M20 9.2v5.6M7.2 7v10M16.8 7v10M7.2 12h9.6',
+  'reports': 'M6.4 3.4h7.4l4 4v13.2H6.4zM13.8 3.4v4h4M9.4 13h5.6M9.4 16.4h5.6',
+  'assistant': 'M12 4.2c4.5 0 8 2.7 8 6.1 0 3.4-3.5 6.1-8 6.1-.9 0-1.8-.1-2.6-.3L5 18.4l.9-3.4c-1.2-1.1-1.9-2.6-1.9-4.2 0-3.4 3.5-6.6 8-6.6Z',
+  'trends': 'M3.4 17.2l5-6 4 3 5-8 4 5'
 } %}
-{% block title %}时钟模式{% endblock %}
+{% block title %}星环首页{% endblock %}
+{% block body_class %}page-ring{% endblock %}
+
 {% block content %}
-<header class="page-head">
+<header class="ring-head">
   <div>
-    <h1>时钟模式</h1>
-    <p class="sub">中心助手 · 外环选刻度 · 点「进入」才打开页面</p>
+    <p class="eyebrow">{{ today_label }} · 第 {{ week_no }} 周</p>
+    <h1>{{ greeting }}</h1>
+    <p class="sub">
+      数据截至 {{ end_day }}
+      {% if guidance.data_freshness_days is not none %}（{{ guidance.data_freshness_days }} 天前）{% endif %}
+      · 已确认 {{ counts.confirmed }} 条
+    </p>
   </div>
-  <form method="post" action="/settings/mode">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <input type="hidden" name="mode" value="simple">
-    <input type="hidden" name="next_path" value="/">
-    <button class="btn secondary">切回简洁模式</button>
-  </form>
+  <div class="ring-chips">
+    {% if counts.pending %}<a class="ring-chip is-warn" href="{{ hrefs.records }}?status=pending">待确认 <b>{{ counts.pending }}</b></a>{% endif %}
+    {% if conflicts %}<a class="ring-chip" href="{{ hrefs.conflicts }}">待裁决 <b>{{ conflicts }}</b></a>{% endif %}
+    <a class="ring-chip" href="{{ hrefs.alerts }}">未读提醒 <b>{{ unread_alerts }}</b></a>
+    <a class="ring-chip is-primary" href="{{ hrefs.imports }}">导入数据</a>
+  </div>
 </header>
 
-<div class="chronos-app">
-  {# 单选控件驱动整个表盘：无脚本也能用（点击标签 / Tab + 方向键）；拖拽只是可选增强 #}
-  {% for s in sectors %}
-  <input class="sector-input" type="radio" name="sector" id="sector-{{ s.key }}"
-         value="{{ s.key }}" data-angle="{{ s.idx * 60 }}"
-         {% if selected == s.key %}checked{% endif %}>
+<div class="ring-home" id="ring-top">
+  {# 单选控件驱动整个星环：无脚本也能用（点标签 / Tab + 方向键）；脚本只做最短路径与拖拽增强 #}
+  {% for node in ring.nodes %}
+  <input class="ring-input" type="radio" name="sector" id="sector-{{ node.key }}" value="{{ node.key }}"
+         data-angle="{{ node.angle }}" {% if selected == node.key %}checked{% endif %}>
   {% endfor %}
-  <input class="sector-input" type="radio" name="sector" id="sector-idle" value="idle"
+  <input class="ring-input" type="radio" name="sector" id="sector-idle" value="idle"
          {% if not selected %}checked{% endif %}>
-  <input class="sector-input" type="radio" name="sector" id="sector-assistant" value="assistant">
 
-  <section aria-label="表盘导航">
-    <div class="dial" role="group" aria-label="表盘导航：选一个刻度看预览，点「进入」打开">
-      <div class="dial-face" aria-hidden="true"></div>
+  <div class="ring-stage">
+    <div class="orbit-wrap">
+      <div class="orbit" role="group" aria-label="星环导航：点一个模块看摘要，点「查看详情」才离开本页">
+        <div class="orbit-aura" aria-hidden="true"></div>
+        <div class="orbit-sheen" aria-hidden="true"></div>
+        <div class="orbit-rings" aria-hidden="true"><i></i><i></i><i></i></div>
 
-      <div class="dial-ticks" aria-hidden="true">
-        {% for i in range(12) %}
-        <i class="tick" style="left:{{ 50 + SIN12[i] * 45 }}%;top:{{ 50 - COS12[i] * 45 }}%;--a:{{ i * 30 }}deg"></i>
-        {% endfor %}
-        {% for i in range(12) %}
-        <i class="tick minor" style="left:{{ 50 + SINM[i] * 39 }}%;top:{{ 50 - COSM[i] * 39 }}%;--a:{{ 15 + i * 30 }}deg"></i>
-        {% endfor %}
-      </div>
-
-      <div class="dial-arc" aria-hidden="true">
-        <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" pathLength="100"/></svg>
-      </div>
-      <div class="dial-needle" aria-hidden="true"></div>
-      <div class="dial-cap" aria-hidden="true"></div>
-
-      {% for s in sectors %}
-      <label class="dial-fbtn" for="sector-{{ s.key }}" style="--c:{{ s.accent }};left:{{ 50 + SIN6[s.idx] * 37 }}%;top:{{ 50 - COS6[s.idx] * 37 }}%">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{ ICONS.get(s.key, '') }}"/></svg>
-        <span>{{ s.label }}</span>
-      </label>
-      {% endfor %}
-
-      <label class="dial-mic" for="sector-assistant" title="唤醒助手">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
-      </label>
-
-      <div class="dial-core">
-        <label class="dial-orb" for="sector-assistant" aria-label="唤醒助手">
-          <span class="orb-rings"><i></i><i></i><i></i></span>
-          <span class="orb-ball">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M12 4c4 0 7 2.8 7 6.4 0 3.5-3.1 6.3-7 6.3-.9 0-1.7-.1-2.5-.4L5.6 18l.7-3C4.8 13.7 5 12.2 5 10.4 5 6.8 8 4 12 4Z" fill="currentColor"/></svg>
-          </span>
-          <span class="orb-hint">点我唤醒助手</span>
-        </label>
-
-        {% for s in sectors %}
-        <div class="core-card" data-sector="{{ s.key }}">
-          <p class="core-kicker" style="color:{{ s.accent }}">{{ s.kicker }}</p>
-          <p class="core-value">{{ s.value_text }}</p>
-          <p class="core-sub">{{ s.sub }}</p>
-          <ul class="core-facts">
-            {% for label, value in s.facts %}
-            <li><span>{{ label }}</span><b>{{ value }}</b></li>
-            {% endfor %}
-          </ul>
-          <a class="core-enter" href="{{ s.href }}">进入{{ s.label }} →</a>
+        <div class="orbit-ticks" aria-hidden="true">
+          {% for i in range(60) %}
+          <i class="tick{% if i % 5 %} minor{% endif %}" style="--a:{{ i * 6 }}deg"></i>
+          {% endfor %}
         </div>
+
+        <div class="orbit-arc" aria-hidden="true">
+          <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" pathLength="100"/></svg>
+        </div>
+
+        <div class="needle" aria-hidden="true"><i></i></div>
+
+        {% for node in ring.nodes %}
+        <label class="ring-node mod-{{ node.key }}" for="sector-{{ node.key }}" style="--a:{{ node.angle }}deg">
+          <span class="node-dot">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="{{ ICONS.get(node.key, '') }}"/>
+            </svg>
+          </span>
+          <span class="node-text">
+            <span class="node-label">{{ node.label }}</span>
+            <span class="node-value">{{ node.summary }}</span>
+          </span>
+        </label>
         {% endfor %}
 
-        <p class="core-note">数据截至 {{ end_day }} · 待确认 {{ counts.pending }} · 未读 {{ unread_alerts }}</p>
+        <div class="core" aria-live="polite">
+          {% set c = ring.core %}
+          <div class="core-card{% if c.state == 'empty' %} is-empty{% elif c.state == 'partial' %} is-partial{% endif %}" data-core="idle">
+            <p class="core-kicker">{{ c.kicker }}</p>
+            <p class="core-value">{{ c.value }}</p>
+            <p class="core-sub">{{ c.sub }}</p>
+            <p class="core-note">{{ c.note }}</p>
+          </div>
+          {% for node in ring.nodes %}
+          {% set c = ring.cores[node.key] %}
+          <div class="core-card{% if c.state == 'empty' %} is-empty{% elif c.state == 'partial' %} is-partial{% endif %}" data-core="{{ node.key }}">
+            <p class="core-kicker">{{ node.label }} · {{ c.kicker }}</p>
+            <p class="core-value">{{ c.value }}</p>
+            <p class="core-sub">{{ c.sub }}</p>
+            <p class="core-note">{{ c.note }}</p>
+          </div>
+          {% endfor %}
+        </div>
       </div>
     </div>
 
-    <p class="dial-status" aria-live="polite">
-      <span class="pill"></span>
-      <span class="s s-idle">闲置态：点中心唤醒助手，或点任意刻度看预览</span>
-      <span class="s s-preview">预览态：中心是该功能的摘要；点「进入」才打开页面</span>
-      <span class="s s-asst">助手态：只解释已有结论；预填也需你确认后才保存</span>
-    </p>
-    <p class="dial-hint">
-      键盘：Tab 到表盘后用方向键选刻度，再 Tab 到「进入」按回车；系统开启“减少动态效果”时不做过渡动画。
-      拖拽旋转是可选增强——没有它，点击与键盘同样可用。
-    </p>
-  </section>
+    <aside class="panel-stage" aria-label="模块摘要">
+      {# 面板：一次只显示一张；切换时旧卡片淡出、新卡片从下方浮起 #}
+      <article class="panel mod-idle{% if ring.idle_panel.state == 'empty' %} is-empty{% endif %}" data-module="idle">
+        <header class="panel-head">
+          <span class="panel-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ICONS.get('assistant', '') }}"/></svg>
+          </span>
+          <div>
+            <h2>今日建议</h2>
+            <p class="panel-kicker">点环上的模块，看各自的摘要</p>
+          </div>
+        </header>
+        <div class="panel-body">
+          {% if guidance %}
+          {{ guidance_card(guidance) }}
+          {% else %}
+          <div class="panel-empty"><b>还没有建议</b><p>导入并确认睡眠记录后，这里会给出今天的建议与依据。</p></div>
+          {% endif %}
+        </div>
+      </article>
 
-  <div class="chronos-tiles">
-    {% for tile in tiles %}
-    <a class="tile" href="{{ tile.href }}">
-      <span class="tile-label">{{ tile.label }}</span>
-      <span class="tile-value">{% if tile.value is none %}<span class="muted">—</span>{% else %}{{ tile.value|human(tile.unit, tile.metric) }}{% endif %}</span>
-      <span class="tile-foot">{% if tile.days %}近 7 天有效 {{ tile.days }}/7 天{% else %}近 7 天无数据{% endif %}</span>
-    </a>
-    {% endfor %}
-  </div>
+      {% for panel in ring.panels %}
+      <article class="panel mod-{{ panel.key }}{% if panel.state == 'empty' %} is-empty{% endif %}" data-module="{{ panel.key }}">
+        <header class="panel-head">
+          <span class="panel-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ICONS.get(panel.key, '') }}"/></svg>
+          </span>
+          <div>
+            <h2>{{ panel.title }}</h2>
+            <p class="panel-kicker">{{ panel.kicker }}</p>
+          </div>
+        </header>
 
-  <section class="card">
-    <h2>普通入口</h2>
-    <p class="note">表盘只是另一种排版；不使用表盘也能到达所有页面（键盘 Tab 同样可用）。</p>
-    <div class="link-grid">
-      {% for page in link_pages %}<a href="{{ page.href }}">{{ page.label }}</a>{% endfor %}
-    </div>
-  </section>
+        <div class="panel-body">
+        <p class="panel-lead">{{ panel.lead }}</p>
 
-  <div class="dial-backdrop"><label for="sector-idle" aria-label="关闭助手"></label></div>
-  <div class="dial-sheet" role="dialog" aria-label="助手">
-    <div class="sheet-head">
-      <span class="sheet-orb">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M12 4c4 0 7 2.8 7 6.4 0 3.5-3.1 6.3-7 6.3-.9 0-1.7-.1-2.5-.4L5.6 18l.7-3C4.8 13.7 5 12.2 5 10.4 5 6.8 8 4 12 4Z" fill="currentColor"/></svg>
-      </span>
-      <b>助手</b>
-      <label class="sheet-close" for="sector-idle" title="关闭">×</label>
-    </div>
-    <p class="sheet-note">只解释已经算好的结论；不诊断，不写库。预填的训练表单需要你确认后才会保存。</p>
-    <div class="sheet-actions">
-      {% for item in shortcuts %}
-      <a class="chip" href="{{ item.href }}">{{ item.label }}</a>
+        {% if panel.state == 'empty' %}
+        <div class="panel-empty">
+          <b>{{ panel.empty_title }}</b>
+          <p>{{ panel.empty_text }}</p>
+        </div>
+        {% else %}
+          {% if panel.facts %}
+          <dl class="panel-facts">
+            {% for fact in panel.facts %}
+            <div class="panel-fact{% if fact.wide %} is-wide{% endif %}">
+              <dt>{{ fact.label }}</dt>
+              <dd>{{ fact.value }}{% if fact.hint %}<span class="fact-hint">{{ fact.hint }}</span>{% endif %}</dd>
+            </div>
+            {% endfor %}
+          </dl>
+          {% endif %}
+
+          {% if panel.chart %}
+          <figure class="panel-chart">
+            {{ render_chart(panel.chart) }}
+            <figcaption>{{ panel.chart_caption }}</figcaption>
+          </figure>
+          {% endif %}
+
+          {% if panel.sparks %}
+          <div class="spark-list">
+            {% for row in panel.sparks %}
+            <a class="spark-row" href="{{ row.href }}">
+              <span>
+                <span class="spark-label">{{ row.label }}</span>
+                <span class="spark-meta">{{ row.date_text }}</span>
+                {% if row.spark.has_data %}
+                <svg class="spark" viewBox="0 0 {{ row.spark.width }} {{ row.spark.height }}" role="img" aria-label="{{ row.label }}走势">
+                  {% for segment in row.spark.segments %}<polyline class="line" points="{{ segment }}"/>{% endfor %}
+                  {% for dot in row.spark.dots %}<circle class="point" cx="{{ dot.x }}" cy="{{ dot.y }}" r="1.6"/>{% endfor %}
+                </svg>
+                {% endif %}
+              </span>
+              <span class="spark-value">{{ row.value_text }}</span>
+            </a>
+            {% endfor %}
+          </div>
+          {% endif %}
+        {% endif %}
+
+        {% if panel.notes %}
+        <div class="panel-notes">
+          {% for note in panel.notes %}<p class="panel-note">{{ note }}</p>{% endfor %}
+        </div>
+        {% endif %}
+        </div>
+
+        <footer class="panel-actions">
+          {% for action in panel.actions %}
+          <a class="btn {% if action.primary %}primary{% else %}ghost{% endif %}" href="{{ action.href }}">{{ action.label }}</a>
+          {% endfor %}
+        </footer>
+
+        {% if panel.key == 'assistant' and shortcuts %}
+        <div class="chips">
+          {% for item in shortcuts %}<a class="chip" href="{{ item.href }}">{{ item.label }}</a>{% endfor %}
+        </div>
+        {% endif %}
+      </article>
       {% endfor %}
-    </div>
-    <p class="sheet-foot">
-      第一项是自由提问；其余是现成的快捷动作。都只看已算好的数字，不诊断，也不写库。
-    </p>
+    </aside>
   </div>
 </div>
 
-<p class="legend">
-  表盘中心与简洁模式用同一份数据、同一套格式化，不做第二套口径；缺失显示“—”，不显示 0。
-  刻度颜色只表示“当前选中的功能”，不代表健康状况，也不给任何评分。
-</p>
+<div class="ring-foot">
+  <p class="ring-hint">
+    {% if selected %}已选中「{{ (ring.nodes|selectattr('key', 'equalto', selected)|list)[0].label }}」，右侧是摘要 · {% endif %}
+    点环上的模块切换，点面板里的按钮才离开本页
+  </p>
+
+  <div class="ring-status">
+    <span>数据截至 <b>{{ end_day }}</b></span>
+    <a class="warn" href="{{ hrefs.records }}?status=pending">待确认 <b>{{ counts.pending }}</b></a>
+    {% if pending and pending.batches %}
+      {% set latest = pending.batches[0] %}
+      <form method="post" action="/imports/{{ latest.batch_id }}/confirm" class="inline-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="next_path" value="/">
+        <button class="mini ring-confirm" title="批次 {{ latest.file_name }}（{{ latest.date_from }} ~ {{ latest.date_to }}）">
+          {%- if pending.batches|length == 1 -%}
+          一键确认这 {{ latest.pending }} 条
+          {%- else -%}
+          一键确认最近一批（{{ latest.pending }} 条）
+          {%- endif -%}
+        </button>
+      </form>
+      {% if pending.batches|length > 1 %}
+      <a class="ring-chip-hint" href="{{ hrefs.records }}?status=pending">共 {{ pending.batches|length }} 批 →</a>
+      {% endif %}
+    {% endif %}
+    <a href="{{ hrefs.conflicts }}">冲突 <b>{{ conflicts }}</b></a>
+    <a href="{{ hrefs.alerts }}">未读提醒 <b>{{ unread_alerts }}</b></a>
+    <a href="{{ hrefs.records }}">全部记录 <b>{{ counts.total }}</b></a>
+  </div>
+
+  <details class="ring-more">
+    <summary>普通入口（不经过星环也能到达所有页面）</summary>
+    <div class="ring-more-body">
+      <div class="link-grid">
+        {% for page in link_pages %}<a href="{{ page.href }}">{{ page.label }}</a>{% endfor %}
+      </div>
+      <p class="note">
+        键盘：<kbd>Tab</kbd> 进入星环后用<kbd>方向键</kbd>切换模块，模块本身不跳转，按 <kbd>Tab</kbd> 到面板里的按钮再回车。
+        系统开启「减少动态效果」时不做过渡动画；拖拽转环是可选增强，没有它点击与键盘同样可用。
+      </p>
+      <p class="note">
+        环上的颜色只表示「这是哪个模块」，不代表健康状况；中心显示的是分类判断与真实数值，
+        数据不足时直接写「数据不足」，不会用示例数据填充。
+      </p>
+    </div>
+  </details>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-/* 可选增强：拖拽拨盘换刻度。
-   1) 只改预览，不导航 —— 导航仍然要显式点「进入」；
-   2) 无脚本时点击与键盘完全可用，这里只是增强；
-   3) 只有脚本加载后才给 .dial 加 touch-action:none，避免触屏用户滚不动页面；
-   4) 尊重 prefers-reduced-motion：不做惯性，只做即时吸附。 */
+/* 星环增强（没有它页面照样能用）：
+   1) 指针走最短路径 —— 从 300° 到 0° 时不要倒着扫 300°，CSS 单独做不到；
+   2) 按住环身拖拽换模块 —— 松手吸附到最近模块，不做惯性；
+   3) 只在脚本加载后才允许拖拽手势，避免触屏用户在环上滚不动页面；
+   4) 尊重 prefers-reduced-motion：不做过渡，直接落位。 */
 (function () {
-  var dial = document.querySelector('.dial');
-  if (!dial || !window.PointerEvent) return;
-  var inputs = Array.prototype.slice.call(document.querySelectorAll('input.sector-input[data-angle]'));
-  if (!inputs.length) return;
+  var home = document.querySelector('.ring-home');
+  if (!home || !window.PointerEvent) return;
+  var stage = home.querySelector('.ring-stage');
+  var orbit = home.querySelector('.orbit');
+  var inputs = Array.prototype.slice.call(home.querySelectorAll('input.ring-input[data-angle]'));
+  if (!stage || !orbit || !inputs.length) return;
 
-  dial.classList.add('has-drag');
-  var dragging = false, rect = null;
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var current = 0;
+
+  function angleOf(input) {
+    return parseFloat(input.getAttribute('data-angle')) || 0;
+  }
+  function shortest(from, to) {
+    var delta = ((to - from) % 360 + 540) % 360 - 180;
+    return from + delta;
+  }
+  function paint(deg) {
+    current = deg;
+    stage.style.setProperty('--deg', deg + 'deg');
+  }
+
+  /* 首屏：把当前选中项的角度写进 --deg，之后再切换就从这里起算 */
+  var checked = home.querySelector('input.ring-input:checked');
+  paint(checked && checked.hasAttribute('data-angle') ? angleOf(checked) : 0);
+
+  home.addEventListener('change', function (event) {
+    var input = event.target;
+    if (!input.classList || !input.classList.contains('ring-input')) return;
+    if (!input.hasAttribute('data-angle')) return;      /* 回到闲置态：指针隐藏，角度保留 */
+    paint(shortest(current, angleOf(input)));
+  });
+
+  /* ---- 拖拽：按住环身转动指针，松手吸附 ---- */
+  orbit.classList.add('has-drag');
+  var dragging = false;
 
   function angleAt(x, y) {
-    rect = dial.getBoundingClientRect();
-    var cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    var rect = orbit.getBoundingClientRect();
+    var cx = rect.left + rect.width / 2;
+    var cy = rect.top + rect.height / 2;
     var deg = Math.atan2(x - cx, -(y - cy)) * 180 / Math.PI;
     return deg < 0 ? deg + 360 : deg;
   }
-
   function nearest(deg) {
-    var best = null, bestDiff = 999;
+    var best = null;
+    var bestDiff = 999;
     inputs.forEach(function (input) {
-      var a = parseFloat(input.getAttribute('data-angle')) || 0;
+      var a = angleOf(input);
       var diff = Math.abs(((a - deg) % 360 + 540) % 360 - 180);
       if (diff < bestDiff) { bestDiff = diff; best = input; }
     });
     return best;
   }
-
-  dial.addEventListener('pointerdown', function (e) {
-    /* 标签、中心卡、助手按钮上的操作优先，不进入拖拽 */
-    if (e.target.closest('.dial-fbtn') || e.target.closest('.dial-core') || e.target.closest('.dial-mic')) return;
-    dragging = true;
-    rect = null;
-  });
-
-  dial.addEventListener('pointermove', function (e) {
-    if (!dragging) return;
-    var deg = angleAt(e.clientX, e.clientY);
-    dial.style.setProperty('--drag-deg', deg + 'deg');
-    dial.classList.add('is-dragging');
-    var input = nearest(deg);
-    if (input && !input.checked) { input.checked = true; }
-  });
-
   function stop() {
     if (!dragging) return;
     dragging = false;
-    dial.classList.remove('is-dragging');
+    stage.classList.remove('is-dragging');
+    var input = home.querySelector('input.ring-input:checked');
+    if (input && input.hasAttribute('data-angle')) {
+      paint(shortest(current, angleOf(input)));
+    }
   }
 
-  dial.addEventListener('pointerup', stop);
-  dial.addEventListener('pointercancel', stop);
-  dial.addEventListener('pointerleave', stop);
+  orbit.addEventListener('pointerdown', function (event) {
+    /* 点在模块图标或中心上，交给原生点击，不要抢 */
+    if (event.target.closest('.ring-node') || event.target.closest('.core')) return;
+    dragging = true;
+    stage.classList.add('is-dragging');
+    paint(angleAt(event.clientX, event.clientY));
+  });
+
+  orbit.addEventListener('pointermove', function (event) {
+    if (!dragging) return;
+    var deg = angleAt(event.clientX, event.clientY);
+    paint(deg);
+    var input = nearest(deg);
+    if (input && !input.checked) input.checked = true;
+  });
+
+  orbit.addEventListener('pointerup', stop);
+  orbit.addEventListener('pointercancel', stop);
+  orbit.addEventListener('pointerleave', stop);
+
+  if (reduce) {
+    reduce.addEventListener('change', function () {
+      if (reduce.matches) stage.classList.remove('is-dragging');
+    });
+  }
 })();
 </script>
 {% endblock %}

@@ -23,6 +23,36 @@
   <button type="submit">筛选</button>
 </form>
 
+{% if pending and pending.batches %}
+<section class="card batch-confirm">
+  <div class="card-head">
+    <h2>待确认 {{ pending.total }} 条</h2>
+    <span class="muted small">按批次确认 · 不会动其它待确认记录</span>
+  </div>
+  <ul class="batch-list">
+    {% for batch in pending.batches %}
+    <li>
+      <div class="batch-meta">
+        <b>{{ batch.file_name }}</b>
+        <span class="muted small">{{ batch.date_from }} ~ {{ batch.date_to }} · {{ batch.pending }} 条待确认</span>
+      </div>
+      <form method="post" action="/imports/{{ batch.batch_id }}/confirm">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="next_path" value="/records?status=pending">
+        <button class="mini">一键确认 {{ batch.pending }} 条</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if pending.loose %}
+  <p class="note">
+    另有 {{ pending.loose }} 条没有导入批次的手工记录，只能逐条确认（见下表）。
+  </p>
+  {% endif %}
+  <p class="note">确认后这些记录才会进入趋势、基线与提醒；确认前它们只是"读进来了"。</p>
+</section>
+{% endif %}
+
 {% if items %}
 <table class="records">
   <thead>

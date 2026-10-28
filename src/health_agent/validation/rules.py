@@ -260,7 +260,11 @@ def validate_row(
         extraction_method=None
         if raw.get("extraction_method") is None
         else str(raw.get("extraction_method")),
-        notes=None if raw.get("notes") is None else str(raw.get("notes")),
+        # `note` 是早期手工 CSV 用的列名（data/inbox 里的历史文件都是它），
+        # `notes` 是模型字段名。两个都认：否则历史文件里的来源说明会被静默丢掉。
+        notes=None
+        if raw.get("notes") is None and raw.get("note") is None
+        else str(raw.get("notes") if raw.get("notes") is not None else raw.get("note")),
         flags=tuple(dict.fromkeys(flags)),
     )
     return ValidationResult(record, tuple(issues))
